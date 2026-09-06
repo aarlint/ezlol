@@ -47,6 +47,9 @@ func (s *Server) detectOffer(ctx context.Context, live *liveResponse) (*augmentO
 	if !s.ocr.Available() {
 		return nil, "unavailable"
 	}
+	if !s.settings.Get().OCR {
+		return nil, "disabled"
+	}
 	if builds.QueueTag(s.watcher.Status().QueueID) != "aram" {
 		return nil, "available"
 	}

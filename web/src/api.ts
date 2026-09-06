@@ -1,4 +1,4 @@
-import type { Build, BuildsStatus, RunePage, ChampSelect, Champion, ChampionDetail, ChampionInfo, Eog, Live, LogEntry, Mastery, PlayRecord, Session, Status } from './types'
+import type { Build, BuildsStatus, RunePage, ChampSelect, Champion, ChampionDetail, ChampionInfo, Eog, Live, LogEntry, Mastery, PlayRecord, Session, SettingsView, Status, UpdateInfo } from './types'
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...init })
@@ -31,6 +31,10 @@ export const api = {
   info: (key: string) => req<{ champion: Champion; info?: ChampionInfo }>(`/api/champions/${encodeURIComponent(key)}/info`),
   eog: () => req<Eog>('/api/eog'),
   session: () => req<Session>('/api/session'),
+  settings: () => req<SettingsView>('/api/settings'),
+  saveSettings: (patch: Record<string, unknown>) => req<SettingsView>('/api/settings', { method: 'PUT', body: JSON.stringify(patch) }),
+  update: () => req<UpdateInfo>('/api/update'),
+  checkUpdate: () => req<UpdateInfo>('/api/update/check', { method: 'POST' }),
   mastery: () => req<Record<string, Mastery>>('/api/mastery'),
   applyRunes: (championId: number, page: RunePage) =>
     req<{ ok: boolean }>('/api/runes/apply', { method: 'POST', body: JSON.stringify({ championId, page }) }),
@@ -67,7 +71,12 @@ export function fmtTime(sec: number): string {
 
 declare global {
   interface Window {
-    ezlol?: { electron: boolean; platform: string; setOverlay?: (on: boolean) => Promise<boolean>; onToggleOverlay?: (fn: () => void) => void }
+    ezlol?: {
+      electron: boolean
+      platform: string
+      onUpdate?: (fn: (state: { status: string; version?: string; error?: string }) => void) => void
+      installUpdate?: () => Promise<boolean>
+    }
   }
 }
 export const isElectron = () => !!window.ezlol?.electron

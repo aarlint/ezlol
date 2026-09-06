@@ -56,6 +56,6 @@ button.sm { padding: 6px 8px; font-size: 10px; }
 .cell { position: relative; cursor: pointer; }
 .cell img { width: 100%; aspect-ratio: 1; border: 1px solid var(--gold-deep); display: block; filter: saturate(.85); transition: all .12s; }
 .cell:hover img { border-color: var(--gold); filter: saturate(1.1); transform: scale(1.06); }
-.cell.active img { border-color: var(--hextech-2); box-shadow: 0 0 10px rgba(10,200,185,.6); filter: saturate(1.1); }
-.m { position: absolute; right: 1px; bottom: 1px; font-size: 9px; font-family: var(--display); color: var(--gold); background: rgba(1,10,19,.85); padding: 0 3px; border: 1px solid var(--gold-deep); }
+.cell.active img { border-color: var(--hextech-2); box-shadow: 0 0 10px var(--accent-glow); filter: saturate(1.1); }
+.m { position: absolute; right: 1px; bottom: 1px; font-size: 9px; font-family: var(--display); color: var(--gold); background: var(--pill-bg); padding: 0 3px; border: 1px solid var(--gold-deep); }
 </style>

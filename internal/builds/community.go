@@ -145,10 +145,27 @@ type opggResponse struct {
 	} `json:"data"`
 }
 
+// opggRole maps our role names onto op.gg's path segment.
+var opggRole = map[string]string{"TOP": "top", "JUNGLE": "jungle", "MIDDLE": "mid", "BOTTOM": "adc", "UTILITY": "support"}
+
 // ARAMBuild returns the op.gg ARAM build for a champion resolved against Data Dragon.
 func (c *Community) ARAMBuild(ctx context.Context, d *ddragon.Data, champ ddragon.Champion) (*Build, error) {
 	url := fmt.Sprintf("https://lol-api-champion.op.gg/api/global/champions/aram/%d/none?tier=all", champ.ID)
-	b, err := c.fetch(ctx, fmt.Sprintf("opgg-aram-%d.json", champ.ID), url, 3*time.Hour)
+	return c.opggBuild(ctx, d, champ, url, fmt.Sprintf("opgg-aram-%d.json", champ.ID), "aram", "NONE")
+}
+
+// RiftBuild returns the op.gg ranked Summoner's Rift build for a champion in a role.
+func (c *Community) RiftBuild(ctx context.Context, d *ddragon.Data, champ ddragon.Champion, role string) (*Build, error) {
+	r, ok := opggRole[role]
+	if !ok {
+		return nil, fmt.Errorf("unknown role %q", role)
+	}
+	url := fmt.Sprintf("https://lol-api-champion.op.gg/api/global/champions/ranked/%d/%s?tier=all", champ.ID, r)
+	return c.opggBuild(ctx, d, champ, url, fmt.Sprintf("opgg-ranked-%d-%s.json", champ.ID, r), "sr", role)
+}
+
+func (c *Community) opggBuild(ctx context.Context, d *ddragon.Data, champ ddragon.Champion, url, cache, mode, role string) (*Build, error) {
+	b, err := c.fetch(ctx, cache, url, 3*time.Hour)
 	if err != nil {
 		return nil, err
 	}
@@ -180,8 +197,12 @@ func (c *Community) ARAMBuild(ctx context.Context, d *ddragon.Data, champ ddrago
 		return out
 	}
 	st := r.Data.Summary.AverageStats
+	patch := r.Meta.Version
+	if mode == "aram" {
+		patch += "-aram"
+	}
 	out := &Build{
-		Champion: champ, Patch: r.Meta.Version + "-aram", Role: "NONE", Mode: "aram", Source: "opgg",
+		Champion: champ, Patch: patch, Role: role, Mode: mode, Source: "opgg",
 		Total: Count{Games: st.Play, Wins: int(float64(st.Play) * st.WinRate)},
 		Tier:  st.Tier, Rank: st.Rank, PickRate: st.PickRate,
 	}

@@ -17,6 +17,7 @@ type livePlayer struct {
 	Name         string           `json:"name"`
 	Champion     ddragon.Champion `json:"champion"`
 	Team         string           `json:"team"`
+	Position     string           `json:"position"`
 	IsDead       bool             `json:"isDead"`
 	RespawnTimer float64          `json:"respawnTimer"`
 	Level        int              `json:"level"`
@@ -51,19 +52,21 @@ type liveSpell struct {
 }
 
 type liveResponse struct {
-	InGame   bool               `json:"inGame"`
-	GameTime float64            `json:"gameTime"`
-	GameMode string             `json:"gameMode"`
-	MapID    int                `json:"mapId"`
-	Me       *live.ActivePlayer `json:"me,omitempty"`
-	MyTeam   string             `json:"myTeam"`
-	Players  []livePlayer       `json:"players"`
-	Hint     string             `json:"hint"`
-	Focus    string             `json:"focus"`
-	FocusWhy string             `json:"focusWhy"`
-	Offer    *augmentOffer      `json:"offer,omitempty"`
-	OCR      string             `json:"ocr"` // available | unavailable | error text
-	Events   []live.Event       `json:"events"`
+	InGame     bool               `json:"inGame"`
+	GameTime   float64            `json:"gameTime"`
+	GameMode   string             `json:"gameMode"`
+	MapID      int                `json:"mapId"`
+	Me         *live.ActivePlayer `json:"me,omitempty"`
+	MyTeam     string             `json:"myTeam"`
+	Players    []livePlayer       `json:"players"`
+	Hint       string             `json:"hint"`
+	Focus      string             `json:"focus"`
+	FocusWhy   string             `json:"focusWhy"`
+	Offer      *augmentOffer      `json:"offer,omitempty"`
+	OCR        string             `json:"ocr"` // available | unavailable | error text
+	Objectives *objectives        `json:"objectives,omitempty"`
+	Opponent   string             `json:"opponent,omitempty"` // lane opponent champion name
+	Events     []live.Event       `json:"events"`
 }
 
 func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +88,7 @@ func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
 	for _, p := range gd.AllPlayers {
 		lp := livePlayer{
 			Name: firstNonEmpty(p.RiotIDName, p.SummonerName), Team: p.Team, IsDead: p.IsDead, RespawnTimer: p.RespawnTimer,
-			Level: p.Level, Kills: p.Scores.Kills, Deaths: p.Scores.Deaths, Assists: p.Scores.Assists, CS: p.Scores.CreepScore,
+			Position: p.Position, Level: p.Level, Kills: p.Scores.Kills, Deaths: p.Scores.Deaths, Assists: p.Scores.Assists, CS: p.Scores.CreepScore,
 			Keystone: p.Runes.Keystone.DisplayName,
 		}
 		lp.IsMe = lp.Name == meName
@@ -125,6 +128,10 @@ func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
 	resp.Hint = threatHint(resp.Players, resp.MyTeam)
 	resp.Focus, resp.FocusWhy = s.focusTarget(r.Context(), resp.Players, resp.MyTeam)
 	resp.Offer, resp.OCR = s.detectOffer(r.Context(), &resp)
+	if gd.GameData.MapNumber == 11 {
+		resp.Objectives = summarizeObjectives(gd, resp.Players, resp.MyTeam)
+		resp.Opponent = laneOpponent(resp.Players)
+	}
 	evs := gd.Events.Events
 	if len(evs) > 12 {
 		evs = evs[len(evs)-12:]

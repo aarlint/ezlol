@@ -10,6 +10,12 @@ import CompilePanel from './components/CompilePanel.vue'
 import LiveGame from './components/LiveGame.vue'
 import ChampSelect from './components/ChampSelect.vue'
 import EndOfGame from './components/EndOfGame.vue'
+import SettingsModal from './components/SettingsModal.vue'
+import Toasts from './components/Toasts.vue'
+import ThemeMenu from './components/ThemeMenu.vue'
+import type { ThemeOption } from './components/ThemeMenu.vue'
+import { toast } from './toast'
+import type { UpdateInfo } from './types'
 
 const status = ref<Status | null>(null)
 const logs = ref<LogEntry[]>([])
@@ -17,20 +23,52 @@ const champions = ref<Champion[]>([])
 const selected = ref<Champion | null>(null)
 const followPick = ref(true)
 const soundOn = ref(sound.enabled())
-const overlay = ref(false)
-const electron = isElectron()
-const autoOverlay = ref(localStorage.getItem('ezlol.autoOverlay') === 'on')
-watch(autoOverlay, (v) => localStorage.setItem('ezlol.autoOverlay', v ? 'on' : 'off'))
-async function setOverlay(on: boolean) {
-  if (overlay.value === on) return
-  overlay.value = on
-  await window.ezlol?.setOverlay?.(on)
-  document.body.classList.toggle('overlay', on)
+const showSettings = ref(false)
+const THEMES: ThemeOption[] = [
+  { id: 'hextech', label: 'Hextech', swatch: ['#010a13', '#c8aa6e', '#0ac8b9'] },
+  { id: 'linear', label: 'Linear dark', swatch: ['#0b0c10', '#141519', '#7c7cff'] },
+  { id: 'neon', label: 'Neon', swatch: ['#05060d', '#ff2bd6', '#00f0ff'] },
+  { id: 'synthwave', label: 'Synthwave', swatch: ['#170a2b', '#ff2d95', '#ffd166'] },
+  { id: 'terminal', label: 'Terminal', swatch: ['#000000', '#1f3a1f', '#39ff14'] },
+  { id: 'sketch', label: 'Sketch', swatch: ['#f6f1e7', '#2b2b2b', '#ffe066'] },
+]
+const theme = ref<string>(THEMES.some((t) => t.id === localStorage.getItem('ezlol.theme')) ? (localStorage.getItem('ezlol.theme') as string) : 'hextech')
+watch(
+  theme,
+  (t) => {
+    document.documentElement.dataset.theme = t
+    localStorage.setItem('ezlol.theme', t)
+  },
+  { immediate: true },
+)
+const upd = ref<UpdateInfo | null>(null)
+const electronUpdate = ref<{ status: string; version?: string; error?: string } | null>(null)
+const installUpdate = () => window.ezlol?.installUpdate?.()
+let announcedUpdate = ''
+async function checkUpdateSoon() {
+  try {
+    upd.value = await api.update()
+    if (!upd.value.checkedAt || upd.value.checkedAt.startsWith('0001')) upd.value = await api.checkUpdate()
+    const u = upd.value
+    if (u.hasUpdate && announcedUpdate !== u.latest && electronUpdate.value?.status !== 'downloading' && electronUpdate.value?.status !== 'downloaded') {
+      announcedUpdate = u.latest
+      toast({ key: 'update', kind: 'info', sticky: true, title: `ezlol ${u.latest} available`, body: `You have ${u.current}.`, actions: [{ label: 'Download', primary: true, run: () => window.open(u.url, '_blank') }] })
+    }
+  } catch {
+    /* offline */
+  }
 }
-const toggleOverlay = () => setOverlay(!overlay.value)
+watch(electronUpdate, (st) => {
+  if (!st) return
+  if (st.status === 'downloaded') toast({ key: 'update', kind: 'success', sticky: true, title: `Update ${st.version} ready`, body: 'Restart to install.', actions: [{ label: 'Restart to update', primary: true, run: installUpdate }] })
+  else if (st.status === 'downloading') toast({ key: 'update', kind: 'info', sticky: true, title: `Downloading ${st.version}…` })
+  else if (st.status === 'error') toast({ key: 'update-err', kind: 'warn', title: 'Auto-update failed', body: st.error })
+})
+const electron = isElectron()
 // Page mode drives the layout: idle (lobby, queue, post-game) shows the side
 // column; select and game modes drop it and spread the panels out.
-const forcedMode = new URLSearchParams(location.search).get('mode') // dev: ?mode=game|select|idle
+const params = new URLSearchParams(location.search)
+const forcedMode = params.get('mode') // dev: ?mode=game|select|idle
 const mode = computed(() => {
   if (forcedMode === 'game' || forcedMode === 'select' || forcedMode === 'idle') return forcedMode
   const p = status.value?.phase
@@ -39,6 +77,7 @@ const mode = computed(() => {
   return 'idle'
 })
 const error = ref('')
+watch(error, (e) => e && toast({ key: 'app-error', kind: 'error', title: 'ezlol', body: e }))
 
 let unsub: (() => void) | null = null
 
@@ -49,24 +88,25 @@ function onStatus(s: Status) {
     const c = champions.value.find((x) => x.id === s.pickedChampion)
     if (c && selected.value?.id !== c.id) selected.value = c
   }
-  if (prev && prev.phase !== s.phase && electron && autoOverlay.value) {
-    if (s.phase === 'InProgress') setOverlay(true)
-    else if (prev.phase === 'InProgress') setOverlay(false)
-  }
   if (prev && prev.phase !== s.phase) {
     if (s.phase === 'ReadyCheck') {
       sound.queuePop()
       sound.notify('ezlol', s.autoAccept ? 'Queue popped — accepting' : 'Queue popped!')
+      toast({ key: 'phase', kind: s.autoAccept ? 'success' : 'warn', title: 'Queue popped', body: s.autoAccept ? 'Accepting…' : 'Auto-accept is off — accept in the client.', ttl: 12000 })
     } else if (s.phase === 'ChampSelect') {
       sound.alert()
       sound.notify('ezlol', 'Champ select')
+      toast({ key: 'phase', kind: 'info', title: 'Champ select', ttl: 5000 })
     }
   }
 }
 
 function onLog(l: LogEntry) {
   logs.value = [...logs.value.slice(-199), l]
-  if (l.level === 'accept') sound.accepted()
+  if (l.level === 'accept') {
+    sound.accepted()
+    toast({ key: 'phase', kind: 'success', title: 'Accepted', body: l.message, ttl: 6000 })
+  }
 }
 
 onMounted(async () => {
@@ -81,7 +121,9 @@ onMounted(async () => {
     error.value = (e as Error).message
   }
   unsub = subscribe(onStatus, onLog)
-  window.ezlol?.onToggleOverlay?.(() => toggleOverlay())
+  setTimeout(checkUpdateSoon, 4000)
+  setInterval(checkUpdateSoon, 6 * 3600 * 1000)
+  window.ezlol?.onUpdate?.((st) => (electronUpdate.value = st))
   sound.notify('', '') // triggers the permission prompt once
 })
 onUnmounted(() => unsub?.())
@@ -153,7 +195,6 @@ async function toggleAuto() {
 
 <template>
   <div class="app">
-    <div v-if="electron" class="dragbar" />
     <header class="topbar">
       <div class="brand">ez<span>lol</span></div>
       <span v-if="status" class="pill" :class="status.connected ? 'ok' : 'bad'">
@@ -162,12 +203,6 @@ async function toggleAuto() {
       <span v-if="status?.patch" class="pill"><i class="dot" />Patch {{ status.patch }}</span>
       <span v-if="status?.queueName" class="pill warn"><i class="dot" />{{ status.queueName }}</span>
       <div class="grow" />
-      <label v-if="electron" class="toggle" :class="{ on: overlay }" @click="toggleOverlay" title="Compact always-on-top window for in-game use">
-        <span class="track" /><span>Overlay</span>
-      </label>
-      <label v-if="electron" class="toggle" :class="{ on: autoOverlay }" @click="autoOverlay = !autoOverlay" title="Switch to overlay when a game starts, back when it ends">
-        <span class="track" /><span>Auto</span>
-      </label>
       <label class="toggle" :class="{ on: soundOn }" @click="soundOn = !soundOn">
         <span class="track" /><span>Sound</span>
       </label>
@@ -175,9 +210,12 @@ async function toggleAuto() {
         <span class="track" />
         <span>Auto-accept {{ status.autoAccept ? 'ON' : 'OFF' }}</span>
       </label>
+      <ThemeMenu v-model="theme" :options="THEMES" />
+      <button class="gear" title="Settings" @click="showSettings = true">⚙ Settings</button>
     </header>
 
-    <div v-if="error" class="note">{{ error }}</div>
+    <Toasts />
+    <SettingsModal v-if="showSettings" @close="showSettings = false" />
 
     <div class="layout" :class="mode">
       <div ref="mainEl" class="main" :class="mode">

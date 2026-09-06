@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, estRank, fmtTime } from '../api'
 import * as sound from '../sound'
+import { dismissKey, toast } from '../toast'
 import type { Champion, ChampionDetail, Live, LivePlayer } from '../types'
 const pctf = (x: number) => `${Math.round(x * 100)}%`
 const tierLabel = (t: number) => ['', 'S', 'A', 'B', 'C', 'D'][t] ?? '?'
@@ -88,6 +89,13 @@ async function poll() {
     const prev = live.value
     live.value = await api.live()
     if (live.value.inGame) diffItems(prev, live.value)
+    // Rift: keep the lane opponent's ability cooldowns open.
+    const opp = live.value.players?.find((p) => p.champion.name === live.value?.opponent)
+    if (opp && opp.champion.key && oppLoaded !== opp.champion.key) {
+      oppLoaded = opp.champion.key
+      expanded.value[opp.name] = true
+      if (!details.value[opp.champion.key]) api.spells(opp.champion.key).then((d) => (details.value[opp.champion.key] = d)).catch(() => {})
+    }
     const t = live.value.gameTime ?? 0
     if (t < lastGT - 30) {
       tracked.value = {}
@@ -104,11 +112,16 @@ async function poll() {
     if (!m?.isDead) respawnPinged = false
     // Chime once when an augment offer is detected on screen.
     const off = live.value.offer
-    if (off?.active && !offerPinged) {
-      offerPinged = true
-      sound.alert()
+    if (off?.active) {
+      if (!offerPinged) {
+        offerPinged = true
+        sound.alert()
+      }
+      toast({ key: 'offer', kind: 'pick', sticky: true, title: `Augment pick · take ${off.best}`, body: off.why, cards: off.offered ?? [] })
+    } else if (offerPinged) {
+      offerPinged = false
+      dismissKey('offer')
     }
-    if (!off?.active) offerPinged = false
     // Celebrate your own multikills.
     const evs = live.value.events ?? []
     const last = evs[evs.length - 1]
@@ -129,6 +142,11 @@ onMounted(() => {
 })
 onUnmounted(() => clearInterval(timer))
 
+const isRift = computed(() => live.value?.mapId === 11)
+const opponent = computed(() => enemies.value.find((p) => p.champion.name === live.value?.opponent))
+const csm = (p: LivePlayer) => (live.value && live.value.gameTime > 60 ? (p.cs / (live.value.gameTime / 60)).toFixed(1) : '0')
+const POS: Record<string, string> = { TOP: 'Top', JUNGLE: 'Jg', MIDDLE: 'Mid', BOTTOM: 'Bot', UTILITY: 'Sup' }
+let oppLoaded = ''
 const myTeam = computed(() => (live.value?.players ?? []).filter((p) => p.team === live.value?.myTeam))
 const enemies = computed(() => (live.value?.players ?? []).filter((p) => p.team !== live.value?.myTeam))
 const teamKills = (ps: LivePlayer[]) => ps.reduce((a, p) => a + p.kills, 0)
@@ -192,29 +210,19 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 
 <template>
   <template v-if="live?.inGame">
-    <!-- Augment pick -->
-    <section v-if="live.offer?.active" class="panel span-all offer-box">
-      <h2>Augment pick · level {{ live.offer.level }} · <b class="take">take {{ live.offer.best }}</b> <span class="muted" style="text-transform: none; letter-spacing: 0">{{ live.offer.why }}</span></h2>
-      <div class="offer-cards">
-        <div v-for="(a, i) in live.offer.offered ?? []" :key="a.id" class="offer-card" :class="[a.rarity, { best: i === 0 }]" :title="a.desc">
-          <img v-if="a.icon" :src="a.icon" :alt="a.name" />
-          <div class="oc-body">
-            <div class="oc-name"><span class="tier-pip" :class="'t' + a.tier">{{ tierLabel(a.tier) }}</span>{{ a.name }}</div>
-            <div class="oc-stats">{{ a.games ? `${pctf(a.winRate)} win · ${a.games} games · ${pctf(a.pickRate)} pick` : 'no data' }}</div>
-            <div class="oc-desc">{{ a.desc }}</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- Tactical: score, status, hints -->
     <section class="panel">
       <h2>Live <span class="clock">{{ fmtTime(live.gameTime) }}</span><span class="muted" style="margin-left: 8px">{{ live.gameMode }}</span></h2>
       <div class="score"><span class="ally">{{ teamKills(myTeam) }}</span><span class="vs">vs</span><span class="enemy">{{ teamKills(enemies) }}</span></div>
-      <div v-if="myself?.isDead" class="respawn-banner">RESPAWN IN {{ Math.ceil(myself.respawnTimer) }}</div>
-      <div v-if="live.offer?.pending && !live.offer.active" class="offer-pending">Augment pick due (lvl {{ live.offer.level }}) — shows when dead / at base. {{ live.ocr !== 'available' ? `Scan: ${live.ocr}` : 'Scanning…' }}</div>
-      <div v-if="advantage.diff >= 2" class="adv go">NUMBERS +{{ advantage.diff }} — go!</div>
-      <div v-else-if="advantage.diff <= -2" class="adv back">OUTNUMBERED {{ advantage.diff }} — play safe</div>
+      <!-- Fixed-height status slot: content swaps without resizing the box -->
+      <div class="status-slot">
+        <div v-if="myself?.isDead" class="respawn-banner">RESPAWN IN {{ Math.ceil(myself.respawnTimer) }}</div>
+        <div v-else-if="live.offer?.active" class="adv go">PICK {{ live.offer.best }}</div>
+        <div v-else-if="advantage.diff >= 2" class="adv go">NUMBERS +{{ advantage.diff }} — go!</div>
+        <div v-else-if="advantage.diff <= -2" class="adv back">OUTNUMBERED {{ advantage.diff }} — play safe</div>
+        <div v-else-if="live.offer?.pending" class="offer-pending">Augment pick due (lvl {{ live.offer.level }}) — die or recall. {{ live.ocr !== 'available' ? `Scan: ${live.ocr}` : '' }}</div>
+        <div v-else class="offer-pending quiet">—</div>
+      </div>
       <div v-if="live.focus" class="hintline"><b style="color: var(--red)">Focus {{ live.focus }}</b> — {{ live.focusWhy }}</div>
       <div v-if="live.hint" class="hintline">Build: {{ live.hint }}</div>
       <div v-if="enemyBack.length" class="down"><span class="muted">Enemy back:</span><span v-for="p in enemyBack" :key="p.name" class="pill"><img :src="p.champion.image" />{{ p.champion.name }} {{ Math.ceil(p.respawnTimer) }}s</span></div>
@@ -232,7 +240,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
           </div>
           <div class="info">
             <div class="pname">{{ p.champion.name }} <span class="muted">{{ p.name }}</span></div>
-            <div class="kda">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }} <span class="istats"><b v-if="p.itemAD" class="ad">{{ p.itemAD }} AD</b><b v-if="p.itemAP" class="ap">{{ p.itemAP }} AP</b><b v-if="p.itemArmor" class="ar">{{ p.itemArmor }} AR</b><b v-if="p.itemMR" class="mr">{{ p.itemMR }} MR</b></span></div>
+            <div class="kda">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }}<span v-if="isRift" class="muted"> · {{ POS[p.position] ?? '' }} {{ p.cs }}cs ({{ csm(p) }}/m)</span> <span class="istats"><b v-if="p.itemAD" class="ad">{{ p.itemAD }} AD</b><b v-if="p.itemAP" class="ap">{{ p.itemAP }} AP</b><b v-if="p.itemArmor" class="ar">{{ p.itemArmor }} AR</b><b v-if="p.itemMR" class="mr">{{ p.itemMR }} MR</b></span></div>
           </div>
           <div class="items"><img v-for="it in (p.items ?? []).filter((i) => i.image)" :key="it.id" :src="it.image" :title="it.name" /></div>
           <div class="spells">
@@ -261,7 +269,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
           </div>
           <div class="info">
             <div class="pname">{{ p.champion.name }} <span class="muted">{{ p.name }}</span></div>
-            <div class="kda">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }} <span class="istats"><b v-if="p.itemAD" class="ad">{{ p.itemAD }} AD</b><b v-if="p.itemAP" class="ap">{{ p.itemAP }} AP</b><b v-if="p.itemArmor" class="ar">{{ p.itemArmor }} AR</b><b v-if="p.itemMR" class="mr">{{ p.itemMR }} MR</b></span></div>
+            <div class="kda">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }}<span v-if="isRift" class="muted"> · {{ POS[p.position] ?? '' }} {{ p.cs }}cs ({{ csm(p) }}/m)</span> <span class="istats"><b v-if="p.itemAD" class="ad">{{ p.itemAD }} AD</b><b v-if="p.itemAP" class="ap">{{ p.itemAP }} AP</b><b v-if="p.itemArmor" class="ar">{{ p.itemArmor }} AR</b><b v-if="p.itemMR" class="mr">{{ p.itemMR }} MR</b></span></div>
           </div>
           <div class="items"><img v-for="it in (p.items ?? []).filter((i) => i.image)" :key="it.id" :src="it.image" :title="it.name" /></div>
           <div class="spells"><img v-for="(s, i) in p.spells ?? []" :key="i" :src="s.image" :title="s.name" /></div>
@@ -272,6 +280,46 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
             </span>
           </div>
         </div>
+    </section>
+
+    <!-- Rift: objectives -->
+    <section v-if="isRift && live.objectives" class="panel">
+      <h2>Objectives</h2>
+      <div class="obj-row"><span class="muted">Drakes</span><span class="ally">{{ (live.objectives.allyDragons ?? []).join(', ') || '—' }}</span><span class="enemy">{{ (live.objectives.enemyDragons ?? []).join(', ') || '—' }}</span></div>
+      <div class="obj-row"><span class="muted">Grubs</span><span class="ally">{{ live.objectives.allyGrubs }}</span><span class="enemy">{{ live.objectives.enemyGrubs }}</span></div>
+      <div class="obj-row"><span class="muted">Herald</span><span class="ally">{{ live.objectives.allyHerald ? '✓' : '—' }}</span><span class="enemy">{{ live.objectives.enemyHerald ? '✓' : '—' }}</span></div>
+      <div class="obj-row"><span class="muted">Baron</span><span class="ally">{{ live.objectives.allyBarons }}</span><span class="enemy">{{ live.objectives.enemyBarons }}</span></div>
+      <div class="obj-row"><span class="muted">Turrets</span><span class="ally">{{ live.objectives.allyTurrets }}</span><span class="enemy">{{ live.objectives.enemyTurrets }}</span></div>
+      <div v-if="live.objectives.soul" class="hintline" :style="{ color: live.objectives.soul === 'ally' ? 'var(--hextech-2)' : 'var(--red)' }">{{ live.objectives.soul === 'ally' ? 'We have soul' : 'Enemy has soul' }}</div>
+      <div v-for="n in live.objectives.notes ?? []" :key="n" class="hintline" style="color: var(--amber)">{{ n }}</div>
+      <h3>Next</h3>
+      <div class="sets">
+        <div v-for="n in live.objectives.next ?? []" :key="n.name" class="set" :class="{ soon: n.in < 60 }">
+          <span>{{ n.name }}</span>
+          <div class="stat"><b>{{ n.in <= 0 ? 'UP' : fmtTime(n.in) }}</b>{{ fmtTime(n.at) }}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Rift: lane matchup -->
+    <section v-if="isRift && opponent" class="panel">
+      <h2>Matchup <span class="muted" style="margin-left: 8px; text-transform: none; letter-spacing: 0">{{ POS[opponent.position] }} · {{ opponent.champion.name }}</span></h2>
+      <div class="prow enemy" :class="{ dead: opponent.isDead }" style="grid-template-columns: 44px 1fr">
+        <div class="portrait"><img :src="opponent.champion.image" /><span class="lvl">{{ opponent.level }}</span><span v-if="opponent.isDead" class="respawn">{{ Math.ceil(opponent.respawnTimer) }}</span></div>
+        <div class="info">
+          <div class="pname">{{ opponent.champion.name }} <span class="muted">{{ opponent.name }}</span></div>
+          <div class="kda">{{ opponent.kills }} / {{ opponent.deaths }} / {{ opponent.assists }} · {{ opponent.cs }}cs ({{ csm(opponent) }}/m) vs you {{ myself?.cs ?? 0 }}cs ({{ myself ? csm(myself) : 0 }}/m)</div>
+          <div class="istats"><b v-if="opponent.itemAD" class="ad">{{ opponent.itemAD }} AD</b><b v-if="opponent.itemAP" class="ap">{{ opponent.itemAP }} AP</b><b v-if="opponent.itemArmor" class="ar">{{ opponent.itemArmor }} AR</b><b v-if="opponent.itemMR" class="mr">{{ opponent.itemMR }} MR</b><b v-if="opponent.itemHP" class="hp">{{ opponent.itemHP }} HP</b></div>
+        </div>
+      </div>
+      <div class="items" style="margin: 6px 0"><img v-for="it in (opponent.items ?? []).filter((i) => i.image)" :key="it.id" :src="it.image" :title="it.name" /></div>
+      <div v-if="details[opponent.champion.key]" class="abilities" style="border-top: 0">
+        <span v-for="sp in details[opponent.champion.key].spells" :key="sp.key" class="ab" :title="`${sp.name}: ${strip(sp.tooltip).slice(0, 220)} — CDs ${sp.cooldowns.join('/')}`">
+          <img :src="sp.image" :alt="sp.name" /><b>{{ sp.key }}</b>
+          <span>{{ cdAt(sp.cooldowns, estRank(opponent.level, sp.key)) === null ? '—' : `≈${cdAt(sp.cooldowns, estRank(opponent.level, sp.key))}s` }}</span>
+        </span>
+      </div>
+      <div class="hintline">Spells: <span v-for="(s, i) in opponent.spells ?? []" :key="i"><img :src="s.image" class="buy-img" /> {{ s.name }} </span></div>
     </section>
 
     <!-- You -->
@@ -318,13 +366,20 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 
 
 <style scoped>
-.offer-box { border-color: var(--hextech-2); box-shadow: inset 0 0 0 1px #000, 0 0 22px rgba(10,200,185,.35); }
+.offer-box { border-color: var(--hextech-2); box-shadow: inset 0 0 0 1px #000, 0 0 22px var(--accent-glow); }
 .offer-box h2 .take { color: var(--hextech-2); }
-.hintline { font-size: 12px; color: var(--muted); margin: 4px 0; }
+.hintline { font-size: 12px; color: var(--muted); margin: 4px 0; min-height: 16px; }
+.status-slot { min-height: 44px; display: grid; align-items: center; margin: 4px 0; }
+.status-slot > * { margin: 0 !important; }
+.offer-pending.quiet { visibility: hidden; }
+.obj-row { display: grid; grid-template-columns: 60px 1fr 1fr; gap: 8px; font-size: 12px; padding: 2px 0; border-bottom: 1px solid var(--line); }
+.obj-row .ally { color: var(--hextech-2); } .obj-row .enemy { color: var(--red); }
+.set.soon { border-color: var(--amber); }
+.istats .hp { color: #7fe0a0; }
 .offer-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 @media (max-width: 900px) { .offer-cards { grid-template-columns: 1fr; } }
-.offer-card { display: grid; grid-template-columns: 44px 1fr; gap: 8px; padding: 8px; border: 1px solid var(--gold-deep); background: rgba(255,255,255,.02); }
-.offer-card.best { border-color: var(--hextech-2); box-shadow: inset 0 0 0 1px rgba(10,200,185,.4); }
+.offer-card { display: grid; grid-template-columns: 44px 1fr; gap: 8px; padding: 8px; border: 1px solid var(--gold-deep); background: var(--surface-raised); }
+.offer-card.best { border-color: var(--hextech-2); box-shadow: inset 0 0 0 1px var(--accent-glow); }
 .offer-card.prismatic { border-left: 3px solid #3fb4d8; }
 .offer-card.gold { border-left: 3px solid var(--gold); }
 .offer-card.silver { border-left: 3px solid #8b9bb0; }
@@ -337,7 +392,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 .offer-pending { font-size: 12px; color: var(--muted); border: 1px dashed var(--gold-deep); padding: 5px 8px; margin-bottom: 8px; }
 .respawn-banner { text-align: center; font-family: var(--display); font-size: 26px; font-weight: 700; letter-spacing: .1em; color: var(--red); text-shadow: 0 0 18px rgba(232,64,87,.6); border: 1px solid #6b1e2b; background: rgba(232,64,87,.08); padding: 6px; margin-bottom: 6px; animation: pulse 1s infinite; }
 .adv { text-align: center; font-family: var(--display); font-size: 16px; letter-spacing: .12em; padding: 6px; margin: 8px 0; border: 1px solid; }
-.adv.go { color: var(--hextech-2); border-color: var(--hextech-dim); background: rgba(10,200,185,.08); text-shadow: 0 0 12px rgba(10,200,185,.5); }
+.adv.go { color: var(--hextech-2); border-color: var(--hextech-dim); background: var(--accent-soft); text-shadow: 0 0 12px rgba(10,200,185,.5); }
 .adv.back { color: var(--amber); border-color: #7a5a2a; background: rgba(240,178,50,.08); }
 .down { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
 .down .pill img { width: 16px; height: 16px; }
@@ -346,8 +401,8 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 .score .ally { color: var(--hextech-2); }
 .score .enemy { color: var(--red); }
 .score .vs { font-size: 12px; color: var(--muted); letter-spacing: .2em; }
-.prow { display: grid; grid-template-columns: 44px 1fr auto auto; gap: 10px; align-items: center; padding: 6px; border: 1px solid rgba(200,170,110,.08); background: rgba(255,255,255,.02); margin-bottom: 6px; }
-.prow.me { border-color: var(--hextech-dim); background: rgba(3,151,171,.08); }
+.prow { display: grid; grid-template-columns: 44px 1fr auto auto; gap: 10px; align-items: center; padding: 6px; border: 1px solid var(--line); background: var(--surface-raised); margin-bottom: 6px; }
+.prow.me { border-color: var(--hextech-dim); background: var(--accent-soft); }
 .prow.dead .portrait img { filter: grayscale(1) brightness(.5); }
 .portrait { position: relative; width: 44px; height: 44px; cursor: pointer; }
 .abilities { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 2px; border-top: 1px dashed var(--gold-deep); }
@@ -355,7 +410,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 .ab img { width: 22px; height: 22px; border: 1px solid var(--gold-deep); }
 .ab b { color: var(--gold); font-family: var(--display); }
 .portrait img { width: 44px; height: 44px; border: 1px solid var(--gold-dark); }
-.portrait .lvl { position: absolute; right: -4px; bottom: -4px; background: #010a13; border: 1px solid var(--gold-dark); font-size: 10px; padding: 0 4px; color: var(--gold); }
+.portrait .lvl { position: absolute; right: -4px; bottom: -4px; background: var(--surface-input); border: 1px solid var(--gold-dark); font-size: 10px; padding: 0 4px; color: var(--gold); }
 .portrait .respawn { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: 18px; font-weight: 700; color: var(--red); text-shadow: 0 0 6px #000; }
 .info { min-width: 0; }
 .pname { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

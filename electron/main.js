@@ -1,9 +1,15 @@
 'use strict'
-const { app, BrowserWindow, shell, Menu, ipcMain, screen, Notification, globalShortcut } = require('electron')
+const { app, BrowserWindow, shell, Menu, ipcMain, Notification } = require('electron')
 const { spawn } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
 const http = require('node:http')
+let autoUpdater = null
+try {
+  autoUpdater = require('electron-updater').autoUpdater
+} catch {
+  autoUpdater = null
+}
 
 // Keep Chromium's profile out of the Go backend's data directory.
 app.setPath('userData', path.join(app.getPath('appData'), 'ezlol-app'))
@@ -103,23 +109,25 @@ ipcMain.handle('notify', (_e, title, body) => {
   return true
 })
 
-let normalBounds = null
-ipcMain.handle('overlay', (_e, on) => {
-  if (!win) return false
-  if (on) {
-    normalBounds = win.getBounds()
-    const { width } = screen.getPrimaryDisplay().workAreaSize
-    win.setAlwaysOnTop(true, 'floating')
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-    win.setMinimumSize(320, 400)
-    win.setBounds({ x: width - 440, y: 40, width: 420, height: 720 })
-  } else {
-    win.setAlwaysOnTop(false)
-    win.setVisibleOnAllWorkspaces(false)
-    win.setMinimumSize(900, 600)
-    if (normalBounds) win.setBounds(normalBounds)
-  }
-  return on
+// In-place updates: Windows (NSIS) installs on quit; macOS needs a signed app for
+// electron-updater, so unsigned mac builds fall back to the download banner in the UI.
+function setupUpdates() {
+  if (!autoUpdater || !app.isPackaged) return
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  const send = (payload) => win && win.webContents.send('update-state', payload)
+  autoUpdater.on('checking-for-update', () => send({ status: 'checking' }))
+  autoUpdater.on('update-available', (i) => send({ status: 'downloading', version: i.version }))
+  autoUpdater.on('update-not-available', () => send({ status: 'none' }))
+  autoUpdater.on('update-downloaded', (i) => send({ status: 'downloaded', version: i.version }))
+  autoUpdater.on('error', (e) => send({ status: 'error', error: String(e && e.message ? e.message : e) }))
+  const check = () => autoUpdater.checkForUpdates().catch(() => {})
+  setTimeout(check, 15000)
+  setInterval(check, 6 * 60 * 60 * 1000)
+}
+ipcMain.handle('install-update', () => {
+  if (autoUpdater) autoUpdater.quitAndInstall()
+  return true
 })
 
 app.whenReady().then(async () => {
@@ -140,16 +148,11 @@ app.whenReady().then(async () => {
     return
   }
   createWindow()
-  // Toggle the overlay from anywhere (including in-game) with Cmd+Shift+E.
-  globalShortcut.register('CommandOrControl+Shift+E', () => {
-    if (win) win.webContents.send('toggle-overlay')
-  })
+  setupUpdates()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
-
-app.on('will-quit', () => globalShortcut.unregisterAll())
 
 app.on('before-quit', () => {
   app.isQuitting = true

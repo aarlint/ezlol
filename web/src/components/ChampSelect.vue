@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, fmtPoints } from '../api'
 import * as sound from '../sound'
+import { toast } from '../toast'
 import type { ChampSelect, Champion, CompSummary, DamageProfile, Mastery, PlayRecord } from '../types'
 
 const comp = (c: CompSummary) => `${c.tanks} tank · ${c.ranged} ranged · ${c.melee} melee · CC ${c.cc} · tough ${c.durability}`
@@ -21,10 +22,10 @@ async function maybeApplyRunes(c: ChampSelect) {
     const page = b.runes?.[0]
     if (!page) return
     await api.applyRunes(id, page)
-    runeMsg.value = `Runes set for ${b.champion.name}`
+    toast({ key: 'runes', kind: 'success', title: 'Runes set', body: `${b.champion.name}: ${page.primary.name} + ${page.secondary.name}` })
     sound.accepted()
   } catch (e) {
-    runeMsg.value = (e as Error).message
+    toast({ key: 'runes', kind: 'error', title: 'Auto runes failed', body: (e as Error).message })
   }
 }
 const cs = ref<ChampSelect | null>(null)
@@ -45,6 +46,7 @@ async function poll() {
       tradePinged = true
       sound.alert()
       sound.notify('ezlol', 'Trade request received')
+      toast({ key: 'trade', kind: 'warn', title: 'Trade request', body: 'A teammate wants to swap — Accept is in the champ select box.', ttl: 15000 })
     }
     if (!received) tradePinged = false
     if (c.active && c.timeLeft > 0 && c.timeLeft <= 10 && !timerPinged) {
@@ -70,6 +72,7 @@ async function act(fn: () => Promise<unknown>) {
     await poll()
   } catch (e) {
     err.value = (e as Error).message
+    toast({ key: 'cs', kind: 'error', title: 'Champ select action failed', body: err.value })
   } finally {
     busy.value = false
   }
@@ -94,7 +97,6 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
       <h2>Champ select <span class="muted" style="margin-left: 8px">{{ cs.mode === 'aram' ? 'ARAM' : cs.phase }} · {{ cs.timeLeft }}s</span>
         <label class="toggle" :class="{ on: autoRunes }" style="margin-left: auto" title="Set Riot's recommended rune page automatically for the champion you get" @click="autoRunes = !autoRunes"><span class="track" /><span>Auto runes</span></label>
       </h2>
-      <div v-if="runeMsg" class="muted" style="margin-bottom: 8px">{{ runeMsg }}</div>
       <h3>Your team</h3>
       <div class="team">
         <div v-for="p in cs.myTeam ?? []" :key="p.name + p.champion.id" class="cs-player" :class="{ me: p.isMe }" @click="p.champion.id && emit('preview', p.champion)">
@@ -145,7 +147,6 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
       </div>
       <div v-else class="muted">Bench is empty. Reroll or wait for teammates to trade.</div>
       <div v-if="rerollHint(cs)" class="hint" style="margin-top: 6px">{{ rerollHint(cs) }}</div>
-      <div v-if="err" class="note">{{ err }}</div>
     </section>
   </template>
 </template>
@@ -153,11 +154,11 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
 
 <style scoped>
 .team { display: flex; gap: 8px; flex-wrap: wrap; }
-.cs-player { width: 96px; text-align: center; cursor: pointer; padding: 6px; border: 1px solid rgba(200,170,110,.1); background: rgba(255,255,255,.02); }
-.cs-player.me { border-color: var(--hextech-dim); background: rgba(3,151,171,.08); }
-.cs-player.hot { border-color: var(--gold); box-shadow: 0 0 10px rgba(200,170,110,.25); }
+.cs-player { width: 96px; text-align: center; cursor: pointer; padding: 6px; border: 1px solid var(--line); background: var(--surface-raised); }
+.cs-player.me { border-color: var(--hextech-dim); background: var(--accent-soft); }
+.cs-player.hot { border-color: var(--gold); box-shadow: 0 0 10px var(--gold-glow); }
 .cs-player img, .cs-player .empty { width: 56px; height: 56px; border: 1px solid var(--gold-dark); display: block; margin: 0 auto 4px; }
-.cs-player .empty { background: #010a13; }
+.cs-player .empty { background: var(--surface-input); }
 .cs-player:hover img { border-color: var(--gold); }
 .cname { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cs-player .muted { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
