@@ -162,6 +162,7 @@ export interface LivePlayer {
   name: string
   champion: Champion
   team: string
+  position: string
   isDead: boolean
   respawnTimer: number
   level: number
@@ -210,6 +211,23 @@ export interface Live {
   focusWhy: string
   offer?: AugmentOffer
   ocr: string
+  objectives?: Objectives
+  opponent?: string
+}
+export interface Objectives {
+  allyDragons: string[] | null
+  enemyDragons: string[] | null
+  allyGrubs: number
+  enemyGrubs: number
+  allyHerald: boolean
+  enemyHerald: boolean
+  allyBarons: number
+  enemyBarons: number
+  allyTurrets: number
+  enemyTurrets: number
+  next: { name: string; at: number; in: number }[] | null
+  soul?: string
+  notes?: string[] | null
 }
 export interface AugmentOffer {
   active: boolean
@@ -334,4 +352,26 @@ export interface Session {
   games: SessionGame[]
   wins: number
   losses: number
+}
+
+export interface SettingsView {
+  autoAccept: boolean
+  riotApiKeySet: boolean
+  riotApiKeyHint: string
+  platform: string
+  matchesPerRun: number
+  autoCompile: boolean
+  ocr: boolean
+  ocrAvailable: boolean
+  updateCheck: boolean
+  version: string
+}
+export interface UpdateInfo {
+  current: string
+  latest: string
+  hasUpdate: boolean
+  url: string
+  notes: string
+  checkedAt: string
+  error?: string
 }

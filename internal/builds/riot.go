@@ -86,10 +86,31 @@ func NewCompiler(cfg CompilerConfig, store *Store, dd *ddragon.Store, log *slog.
 }
 
 // HasKey reports whether a Riot API key is configured.
-func (c *Compiler) HasKey() bool { return c.cfg.APIKey != "" }
+func (c *Compiler) HasKey() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.cfg.APIKey != ""
+}
 
 // Platform returns the configured platform.
-func (c *Compiler) Platform() string { return c.cfg.Platform }
+func (c *Compiler) Platform() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.cfg.Platform
+}
+
+// Configure updates key, platform and batch size for the next run.
+func (c *Compiler) Configure(apiKey, platform string, matchesPerRun int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cfg.APIKey = apiKey
+	if platform != "" {
+		c.cfg.Platform = platform
+	}
+	if matchesPerRun > 0 {
+		c.cfg.MatchesPerRun = matchesPerRun
+	}
+}
 
 // Progress returns a snapshot.
 func (c *Compiler) Progress() Progress {
@@ -108,7 +129,7 @@ func (c *Compiler) update(f func(p *Progress)) {
 // Returns an error if one is running.
 func (c *Compiler) Start(parent context.Context, queue int) error {
 	if !c.HasKey() {
-		return errors.New("RIOT_API_KEY not set")
+		return errors.New("Riot API key not set (Settings)")
 	}
 	c.mu.Lock()
 	if c.prog.Running {

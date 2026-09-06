@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/aarlint/ezlol/internal/lcu"
+	"github.com/aarlint/ezlol/internal/settings"
 )
 
 // Status is a snapshot of what the watcher knows.
@@ -56,39 +56,25 @@ type Watcher struct {
 	subs     map[chan Event]struct{}
 	interval time.Duration
 	log      *slog.Logger
-	settings string
+	settings *settings.Store
 	fails    int
 }
 
-// New creates a watcher. Auto-accept defaults to on and is persisted in
-// settingsPath (may be empty to disable persistence).
-func New(log *slog.Logger, interval time.Duration, settingsPath string) *Watcher {
+// New creates a watcher. Auto-accept is read from and persisted to the settings store.
+func New(log *slog.Logger, interval time.Duration, st *settings.Store) *Watcher {
 	w := &Watcher{
-		status:   Status{AutoAccept: true},
+		status:   Status{AutoAccept: st.Get().AutoAccept},
 		subs:     map[chan Event]struct{}{},
 		interval: interval,
 		log:      log,
-		settings: settingsPath,
-	}
-	if settingsPath != "" {
-		if b, err := os.ReadFile(settingsPath); err == nil {
-			var st struct {
-				AutoAccept *bool `json:"autoAccept"`
-			}
-			if json.Unmarshal(b, &st) == nil && st.AutoAccept != nil {
-				w.status.AutoAccept = *st.AutoAccept
-			}
-		}
+		settings: st,
 	}
 	return w
 }
 
 func (w *Watcher) saveSettings() {
-	if w.settings == "" {
-		return
-	}
-	b, _ := json.Marshal(map[string]any{"autoAccept": w.Status().AutoAccept})
-	if err := os.WriteFile(w.settings, b, 0o600); err != nil {
+	on := w.Status().AutoAccept
+	if err := w.settings.Update(func(s *settings.Settings) { s.AutoAccept = on }); err != nil {
 		w.log.Warn("settings save failed", "err", err)
 	}
 }

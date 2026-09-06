@@ -122,6 +122,8 @@ type Event struct {
 	KillStreak int      `json:"KillStreak,omitempty"`
 	Acer       string   `json:"Acer,omitempty"`
 	AcingTeam  string   `json:"AcingTeam,omitempty"`
+	DragonType string   `json:"DragonType,omitempty"`
+	Stolen     string   `json:"Stolen,omitempty"`
 }
 
 // Get returns game data, cached for up to 700ms. Returns nil, nil when no game is running.

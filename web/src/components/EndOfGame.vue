@@ -68,8 +68,8 @@ const share = (k: string) => {
 .result.loss { color: var(--red); }
 .teams { display: grid; gap: 12px; }
 .score { width: 100%; border-collapse: collapse; }
-.score td { padding: 4px 6px; border-bottom: 1px solid rgba(200,170,110,.08); vertical-align: middle; }
-.score tr.me td { background: rgba(3,151,171,.08); }
+.score td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.score tr.me td { background: var(--accent-soft); }
 .score td.champ img { width: 32px; height: 32px; border: 1px solid var(--gold-dark); display: block; }
 .who { font-weight: 600; font-size: 13px; }
 .who .muted { font-weight: 400; font-size: 10px; }

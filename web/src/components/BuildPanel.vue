@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { api, fmtPoints, ROLES, ROLE_LABEL, winrate } from '../api'
+import { toast } from '../toast'
 import type { Build, Champion, ChampionInfo, ItemSet, Mastery, PlayRecord, RunePage, Status } from '../types'
 
 const props = defineProps<{ champion: Champion | null; status: Status | null; compact?: boolean }>()
@@ -22,12 +23,13 @@ async function load() {
   loading.value = true
   err.value = ''
   try {
-    build.value = await api.build(props.champion.key, role.value || undefined, mode.value || undefined)
+    build.value = await api.build(props.champion.key, role.value === 'NONE' ? undefined : role.value || undefined, mode.value || undefined)
     role.value = build.value.role
     api.me(props.champion.id, build.value.mode).then((m) => (me.value = m)).catch(() => (me.value = null))
     api.info(props.champion.key).then((r) => (info.value = r.info ?? null)).catch(() => (info.value = null))
   } catch (e) {
     err.value = (e as Error).message
+    toast({ key: 'build', kind: 'error', title: 'Build lookup failed', body: err.value })
   } finally {
     loading.value = false
   }
@@ -63,6 +65,8 @@ function pickRole(r: string) {
 }
 function pickMode(m: '' | 'sr' | 'aram') {
   mode.value = m
+  // Lane only means something on the Rift; drop ARAM's "NONE" and let the server pick.
+  if (m !== 'sr' || role.value === 'NONE') role.value = ''
   load()
 }
 watch(
@@ -80,12 +84,11 @@ async function applyRunes(p: RunePage) {
   applied.value = ''
   try {
     await api.applyRunes(build.value.champion.id, p)
-    applied.value = 'Rune page set in client'
+    toast({ key: 'runes', kind: 'success', title: 'Rune page set', body: `${build.value.champion.name}: ${p.primary.name} + ${p.secondary.name} is now selected in the client.` })
   } catch (e) {
-    applied.value = (e as Error).message
+    toast({ key: 'runes', kind: 'error', title: 'Rune page failed', body: (e as Error).message })
   } finally {
     applying.value = false
-    setTimeout(() => (applied.value = ''), 4000)
   }
 }
 const RARITIES = ['prismatic', 'gold', 'silver'] as const
@@ -108,17 +111,17 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
           <div class="name">{{ build.champion.name }}</div>
           <div class="title">{{ build.champion.title }} · patch {{ build.patch.replace('-aram', '') }}<span v-if="build.mode === 'aram'"> · Howling Abyss</span></div>
         </div>
-        <div class="grow" />
-        <div class="roles">
-          <button :class="{ active: build.mode === 'sr' }" @click="pickMode('sr')">Rift</button>
-          <button :class="{ active: build.mode === 'aram' }" @click="pickMode('aram')">ARAM</button>
-        </div>
       </div>
-      <div class="roles" v-if="build.mode !== 'aram'" style="margin-top: 8px">
-        <button v-for="r in ROLES" :key="r" :class="{ active: role === r }" @click="pickRole(r)">
-          {{ ROLE_LABEL[r] }}
-          <span v-if="build.roles?.find((x) => x.role === r)" class="muted"> {{ build.roles?.find((x) => x.role === r)?.games }}</span>
-        </button>
+      <div class="roles" style="margin-top: 10px">
+        <button :class="{ active: build.mode === 'sr' }" @click="pickMode('sr')">Rift</button>
+        <button :class="{ active: build.mode === 'aram' }" @click="pickMode('aram')">ARAM</button>
+        <template v-if="build.mode !== 'aram'">
+          <span class="sep" />
+          <button v-for="r in ROLES" :key="r" class="sm" :class="{ active: role === r }" @click="pickRole(r)">
+            {{ ROLE_LABEL[r] }}
+            <span v-if="build.roles?.find((x) => x.role === r)" class="muted"> {{ build.roles?.find((x) => x.role === r)?.games }}</span>
+          </button>
+        </template>
       </div>
       <div class="row" style="margin-top: 10px">
         <span class="badge" :class="build.source">
@@ -147,7 +150,6 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
         </div>
       </div>
       <div v-for="n in build.notes ?? []" :key="n" class="note">{{ n }}</div>
-      <div v-if="err" class="note">{{ err }}</div>
     </section>
 
     <!-- Augments: one box per rarity -->
@@ -218,7 +220,7 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
 
     <!-- Runes -->
     <section v-if="build.runes?.length" class="panel">
-      <h2>Runes <span v-if="applied" class="muted" style="text-transform: none; letter-spacing: 0; margin-left: 8px">{{ applied }}</span></h2>
+      <h2>Runes</h2>
       <div class="runes">
         <div v-for="(p, i) in build.runes" :key="i" class="rune-page">
           <div class="trees">
@@ -269,6 +271,8 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
 
 
 <style scoped>
+.roles { justify-content: flex-start; align-items: center; }
+.roles .sep { width: 1px; height: 22px; background: var(--gold-deep); margin: 0 4px; }
 .compact .build-head img { width: 44px; height: 44px; }
 .compact .build-head .name { font-size: 18px; }
 .compact .aug-desc { display: none; }
@@ -280,14 +284,14 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
 .badge.tier.t1 { color: #ff8a3d; border-color: #ff8a3d; }
 .badge.tier.t2 { color: var(--gold); border-color: var(--gold); }
 .path { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 8px; }
-.lv { width: 26px; height: 32px; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 12px; border: 1px solid var(--gold-deep); background: #010a13; position: relative; }
+.lv { width: 26px; height: 32px; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 12px; border: 1px solid var(--gold-deep); background: var(--surface-input); position: relative; }
 .lv i { position: absolute; top: 1px; left: 3px; font-size: 8px; font-style: normal; color: var(--dim); }
 .lv.q { color: #7fb3ff; } .lv.w { color: #7fe0a0; } .lv.e { color: #f0b232; } .lv.r { color: #e84057; }
 .aug-col.prismatic h2 { color: #c7f3ff; background: linear-gradient(90deg, rgba(63,180,216,.22), transparent); border-color: #3fb4d8; }
 .aug-col.gold h2 { color: var(--gold-bright); background: linear-gradient(90deg, rgba(200,170,110,.22), transparent); }
 .aug-col.silver h2 { color: #d8dde3; background: linear-gradient(90deg, rgba(139,155,176,.22), transparent); border-color: #8b9bb0; }
 button.sm { padding: 4px 8px; font-size: 10px; }
-.aug { display: grid; grid-template-columns: 36px 1fr auto; gap: 8px; align-items: center; padding: 5px 6px; margin-bottom: 4px; border: 1px solid rgba(200,170,110,.08); background: rgba(255,255,255,.02); }
+.aug { display: grid; grid-template-columns: 36px 1fr auto; gap: 8px; align-items: center; padding: 5px 6px; margin-bottom: 4px; border: 1px solid var(--line); background: var(--surface-raised); }
 .aug img { width: 36px; height: 36px; border: 1px solid var(--gold-deep); background: #000; }
 .aug-body { min-width: 0; }
 .aug-name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; }
@@ -297,8 +301,8 @@ button.sm { padding: 4px 8px; font-size: 10px; }
 .playstyle { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
 .ps { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); text-transform: capitalize; }
 .pips { display: inline-flex; gap: 2px; }
-.pips i { width: 10px; height: 10px; border: 1px solid var(--gold-deep); background: #010a13; }
-.pips i.on { background: var(--gold); box-shadow: 0 0 6px rgba(200,170,110,.5); }
+.pips i { width: 10px; height: 10px; border: 1px solid var(--gold-deep); background: var(--surface-input); }
+.pips i.on { background: var(--gold); box-shadow: 0 0 6px var(--gold-glow); }
 .badge.ap { color: #7fb3ff; border-color: #2a4a7a; }
 .badge.ad { color: #e8a33d; border-color: #7a5a2a; }
 </style>

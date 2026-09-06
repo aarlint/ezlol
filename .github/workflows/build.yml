@@ -93,6 +93,8 @@ jobs:
             electron/dist/*.dmg
             electron/dist/*.zip
             electron/dist/*.exe
+            electron/dist/*.blockmap
+            electron/dist/latest*.yml
           if-no-files-found: error
 
   release:

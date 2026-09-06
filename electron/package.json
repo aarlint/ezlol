@@ -1,13 +1,16 @@
 {
   "name": "ezlol-app",
   "productName": "ezlol",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "League of Legends queue auto-accept and build viewer",
   "private": true,
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --mac"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
   },
   "devDependencies": {
     "electron": "44.2.0",
@@ -19,6 +22,7 @@
     "directories": { "output": "dist" },
     "files": ["main.js", "preload.js", "icon.png"],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "publish": [{ "provider": "github", "owner": "aarlint", "repo": "ezlol" }],
     "mac": {
       "category": "public.app-category.games",
       "target": ["dmg", "zip"],

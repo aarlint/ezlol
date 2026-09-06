@@ -22,6 +22,8 @@ import (
 	"github.com/aarlint/ezlol/internal/api"
 	"github.com/aarlint/ezlol/internal/builds"
 	"github.com/aarlint/ezlol/internal/ddragon"
+	"github.com/aarlint/ezlol/internal/settings"
+	"github.com/aarlint/ezlol/internal/update"
 	"github.com/aarlint/ezlol/internal/watcher"
 	"github.com/aarlint/ezlol/web"
 )
@@ -72,30 +74,49 @@ func main() {
 	log.Info("ezlol", "version", version)
 	log.Info("data dragon loaded", "version", dd.Data().Version, "champions", len(dd.Data().Champions))
 
+	// Settings file: UI-managed values; env vars / flags override for this run only.
+	cfg := settings.Load(filepath.Join(*dataDir, "settings.json"))
+	if k := os.Getenv("RIOT_API_KEY"); k != "" {
+		_ = cfg.Update(func(s *settings.Settings) { s.RiotAPIKey = k })
+	}
+	if os.Getenv("EZLOL_PLATFORM") != "" {
+		_ = cfg.Update(func(s *settings.Settings) { s.Platform = *platform })
+	}
+	if os.Getenv("EZLOL_MATCHES_PER_RUN") != "" {
+		_ = cfg.Update(func(s *settings.Settings) { s.MatchesPerRun = *matches })
+	}
+	if *autoCompile {
+		_ = cfg.Update(func(s *settings.Settings) { s.AutoCompile = true })
+	}
+
 	store, err := builds.NewStore(filepath.Join(*dataDir, "builds"))
 	if err != nil {
 		log.Error("build store", "err", err)
 		os.Exit(1)
 	}
+	sc := cfg.Get()
 	comp := builds.NewCompiler(builds.CompilerConfig{
-		APIKey:        os.Getenv("RIOT_API_KEY"),
-		Platform:      *platform,
-		MatchesPerRun: *matches,
+		APIKey:        sc.RiotAPIKey,
+		Platform:      sc.Platform,
+		MatchesPerRun: sc.MatchesPerRun,
 		Timeline:      true,
 	}, store, dd, log)
 	if comp.HasKey() {
-		log.Info("riot api key present; build compilation enabled", "platform", *platform)
-		if *autoCompile {
+		log.Info("riot api key present; ranked build compilation enabled", "platform", sc.Platform)
+		if sc.AutoCompile {
 			if err := comp.Start(ctx, 0); err != nil {
 				log.Warn("auto compile", "err", err)
 			}
 		}
 	} else {
-		log.Info("RIOT_API_KEY not set; item builds unavailable until a compile runs. Runes come from the client.")
+		log.Info("no Riot API key; ranked compile disabled (set it in Settings). ARAM builds and runes need no key.")
 	}
 
+	upd := update.New("aarlint/ezlol", version)
+	go upd.Run(ctx, 6*time.Hour, func() bool { return cfg.Get().UpdateCheck })
+
 	community := builds.NewCommunity(filepath.Join(*dataDir, "community"))
-	w := watcher.New(log, time.Second, filepath.Join(*dataDir, "settings.json"))
+	w := watcher.New(log, time.Second, cfg)
 	go w.Run(ctx)
 
 	// Refresh Data Dragon daily so a new patch is picked up without a restart.
@@ -126,7 +147,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           api.New(log, w, dd, store, comp, community, ui, *dev).Handler(),
+		Handler:           api.New(log, w, dd, store, comp, community, cfg, upd, version, ui, *dev).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	ln, err := net.Listen("tcp", *addr)

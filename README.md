@@ -19,8 +19,7 @@ Local helper for League of Legends, with an ARAM focus.
    OCRs the screen, recognises the three offered augments and tells you which to take, ranked by your champion's
    win rate. Needs Screen Recording permission (System Settings → Privacy & Security) for ezlol / your terminal.
 6. **Post-game** – full scoreboard with damage, gold and items as soon as the client has it.
-7. **Electron shell** – native macOS window with an always-on-top compact overlay mode (manual or automatic
-   when a game starts).
+7. **Electron shell** – native macOS/Windows window with auto-update on Windows.
 
 Go backend, Vue 3 frontend, single binary. Everything runs on `127.0.0.1`; nothing leaves your machine except
 read-only requests to Riot's CDN and, optionally, the Riot API.
@@ -79,9 +78,28 @@ hours; ezlol respects both limits and backs off on 429. A 200-match run is rough
 Static data (champion, item, rune and spell names and images) comes from Data Dragon and is cached under
 `ddragon/<version>/` in the data directory. It is refreshed daily.
 
+## Themes
+
+Themes, switchable from the header dropdown (persisted): **Hextech** (classic League: gold frames, Cinzel
+headings, glow), **Linear dark** (flat neutral surfaces, indigo accent, rounded, system font), **Neon**
+(cyberpunk cyan/magenta glow, Orbitron), **Synthwave** (purple night, pink and yellow, grid horizon),
+**Terminal** (green phosphor on black, JetBrains Mono, scanlines) and **Sketch** (paper and ink, hand-drawn
+wobbly borders, handwriting fonts). Every colour, radius, font, button, switch and heading style is a CSS token on `:root`; a theme is just a
+`:root[data-theme="…"]` block that overrides them (see `web/src/style.css`).
+
+## Settings and updates
+
+The ⚙ **Settings** dialog (any mode) holds everything user-facing: Riot API key (masked; stored in
+`settings.json` in the data directory with mode 0600, never logged), platform, matches per compile, compile on
+start, auto-accept, augment pick detection, update checks, sounds, auto runes.
+
+Updates: the backend checks GitHub releases on start and every six hours and shows a banner with a download
+link. The Windows build also self-updates in place (downloads in the background, installs on quit, "Restart to
+update" button). The macOS builds are unsigned, so macOS uses the download banner.
+
 ## Configuration
 
-Flags or environment variables:
+Flags or environment variables (override the saved settings for that run):
 
 | Flag | Env | Default | |
 |---|---|---|---|
@@ -89,7 +107,7 @@ Flags or environment variables:
 | `-data` | `EZLOL_DATA_DIR` | `~/Library/Application Support/ezlol` | Cache and compiled builds. |
 | `-platform` | `EZLOL_PLATFORM` | `na1` | Riot platform used for compiling (`euw1`, `kr`, ...). |
 | `-matches` | `EZLOL_MATCHES_PER_RUN` | `200` | New matches per compile run. |
-| | `RIOT_API_KEY` | | Enables compiling. Never written to disk or logged. |
+| | `RIOT_API_KEY` | | Ranked compile key; saved into settings.json for later runs. Never logged. |
 | `-auto-compile` | `EZLOL_AUTO_COMPILE` | off | Start a compile run on boot. |
 | `-no-open` | `EZLOL_NO_OPEN` | off | Do not open the browser. |
 | `-dev` | `EZLOL_DEV` | | Proxy the UI to a Vite dev server, e.g. `http://localhost:5173`. |
@@ -156,9 +174,8 @@ make dmg     # package ezlol.app + .dmg into electron/dist
 
 The shell spawns `bin/ezlol` (or reuses one already listening on 7331), sandboxes the renderer, and opens
 external links in the system browser. Closing the window keeps the watcher alive in the Dock; Cmd+Q quits both.
-The **Overlay** toggle shrinks the window to an always-on-top panel on the right edge; **Auto** does that when a
-game starts and restores the window when it ends. `Cmd+Shift+E` toggles the overlay from anywhere. Electron
-keeps its own profile in `~/Library/Application Support/ezlol-app`, separate from the backend's data directory.
+Electron keeps its own profile in `~/Library/Application Support/ezlol-app`, separate from the backend's data
+directory.
 
 ## Security notes
 
