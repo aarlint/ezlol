@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ezlol",
+      "runtimeExecutable": "./bin/ezlol",
+      "runtimeArgs": ["-no-open"],
+      "port": 7331
+    }
+  ]
+}

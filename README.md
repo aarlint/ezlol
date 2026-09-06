@@ -1,0 +1,168 @@
+# ezlol
+
+Local helper for League of Legends, with an ARAM focus.
+
+1. **Queue watcher** – polls the League client and auto-accepts the ready check the moment your queue pops.
+   Sound cue and desktop notification on pop and on champ select. Today's win/loss tally and streak.
+2. **Champ select** – your team and the enemy team with damage profile (AD/AP), comp shape (tanks, ranged,
+   CC, toughness) and what your comp is missing. ARAM bench ranked by your mastery, recent record and what the
+   team needs, with one-click swap, reroll and trade. **Apply** writes any rune page into the client and
+   selects it; **Auto runes** does that for whatever champion you end up with.
+3. **Live game** (in-game Live Client Data, no key) – scoreboard for both teams, item-derived AD/AP/armor/MR per
+   player, "what to build" threat tip, enemy summoner-spell cooldown tracker (click when they use it), death
+   timers, numbers-advantage banner, focus-target suggestion, enemy ability cooldowns (click a portrait),
+   item purchase feed, kill feed, your stats and gold.
+4. **Season builds** – current-patch build for any champion (starting items, core build order, boots,
+   late items, runes, summoner spells, skill order), Rift or ARAM. Follows your pick in champ select and your
+   champion in game. Shows your mastery, recent record and Riot's playstyle pips.
+5. **Post-game** – full scoreboard with damage, gold and items as soon as the client has it.
+6. **Electron shell** – native macOS window with an always-on-top compact overlay mode (manual or automatic
+   when a game starts).
+
+Go backend, Vue 3 frontend, single binary. Everything runs on `127.0.0.1`; nothing leaves your machine except
+read-only requests to Riot's CDN and, optionally, the Riot API.
+
+## Install
+
+Grab the latest build from [Releases](https://github.com/aarlint/ezlol/releases): `.dmg` for macOS
+(Apple Silicon `arm64` or Intel `x64`), `.exe` installer or portable for Windows. Builds are unsigned, so:
+
+- macOS: after copying to Applications run `xattr -cr /Applications/ezlol.app` once, or right-click → Open.
+- Windows: click "More info → Run anyway" on the SmartScreen prompt.
+
+Start it before or after the League client; it reconnects on its own.
+
+## Build from source
+
+```bash
+make build      # builds the UI, embeds it, produces bin/ezlol
+./bin/ezlol     # listens on http://127.0.0.1:7331 and opens your browser
+make app        # run the Electron shell against bin/ezlol
+```
+
+Requires Go 1.26+ and Node 22+. CI (`.github/workflows/build.yml`) runs vet/tests, then builds macOS
+arm64/x64 and Windows x64 desktop apps; pushing a `v*` tag publishes them as a GitHub release.
+
+## How it works
+
+### Queue watcher
+
+The League client exposes a local HTTPS API (the LCU). ezlol reads the port and password from the client's
+`lockfile` (or the `LeagueClientUx` process arguments), polls `/lol-gameflow/v1/gameflow-phase` once a second,
+and when the phase is `ReadyCheck` with no response yet it POSTs `/lol-matchmaking/v1/ready-check/accept`.
+Auto-accept is on by default and can be toggled in the UI. Every phase change and accept is logged in the
+Events panel and streamed to the UI over Server-Sent Events.
+
+### Builds
+
+Two data sources, merged:
+
+| Source | Needs | Gives |
+|---|---|---|
+| **Riot in-client recommendations** (LCU `/lol-perks/v1/recommended-pages/...`) | League client running | Rune pages and summoner spells Riot recommends for the champion/role, Summoner's Rift (map 11) or Howling Abyss (map 12). Always available. |
+| **op.gg ARAM stats** (`lol-api-champion.op.gg`, ~8.5M games/patch) | nothing | ARAM: starting items, core build, boots, 4th–6th options, rune pages, spells, skill order + full level path, win/pick rate, tier/rank. Cached 3 h. |
+| **aramgg.com Mayhem augments** + CommunityDragon icons + blitz.gg descriptions | nothing | ARAM Mayhem augment win/pick rate and tier per champion (Tencent CN + client uploads), grouped by rarity. Cached 6 h. |
+| **Compiled from ranked matches** (Riot API match-v5) | `RIOT_API_KEY` | Summoner's Rift: starting items, core build order, boots, 4th–6th item options, rune pages with win rates, spells, skill max order, per-role game counts. |
+
+There is no free public build API, so ezlol compiles its own. With a key set, click **Compile ranked** or
+**Compile ARAM** in the Build data panel (or start with `-auto-compile`). It pulls Challenger and Grandmaster
+players' matches in that queue for your platform, folds every participant into per-champion/per-role aggregates, and saves them under
+the data directory as `builds/<patch>.json`. Each run adds new matches only; run it again over the patch to
+grow the sample. Item build order and skill order come from match timelines, so a run is two API calls per match.
+
+Development keys (from https://developer.riotgames.com) allow 100 requests per 2 minutes and expire every 24
+hours; ezlol respects both limits and backs off on 429. A 200-match run is roughly 400 requests.
+
+Static data (champion, item, rune and spell names and images) comes from Data Dragon and is cached under
+`ddragon/<version>/` in the data directory. It is refreshed daily.
+
+## Configuration
+
+Flags or environment variables:
+
+| Flag | Env | Default | |
+|---|---|---|---|
+| `-addr` | `EZLOL_ADDR` | `127.0.0.1:7331` | Listen address. Keep it on loopback. |
+| `-data` | `EZLOL_DATA_DIR` | `~/Library/Application Support/ezlol` | Cache and compiled builds. |
+| `-platform` | `EZLOL_PLATFORM` | `na1` | Riot platform used for compiling (`euw1`, `kr`, ...). |
+| `-matches` | `EZLOL_MATCHES_PER_RUN` | `200` | New matches per compile run. |
+| | `RIOT_API_KEY` | | Enables compiling. Never written to disk or logged. |
+| `-auto-compile` | `EZLOL_AUTO_COMPILE` | off | Start a compile run on boot. |
+| `-no-open` | `EZLOL_NO_OPEN` | off | Do not open the browser. |
+| `-dev` | `EZLOL_DEV` | | Proxy the UI to a Vite dev server, e.g. `http://localhost:5173`. |
+| | `EZLOL_LOCKFILE` | | Override the League lockfile path (non-default install). |
+
+Store the key in credvault (`credvault set RIOT_API_KEY`, reads stdin) and launch with the credvault
+secret token for `RIOT_API_KEY` in the environment assignment so the value never touches shell history:
+
+```bash
+RIOT_API_KEY={{SECRET:RIOT_API_KEY}} ./bin/ezlol
+```
+
+## Development
+
+```bash
+make dev                    # backend, proxying the UI to Vite
+cd web && npm run dev       # Vite with HMR on :5173, /api proxied to :7331
+make test
+```
+
+Layout:
+
+```
+cmd/ezlol           entrypoint, flags, wiring
+internal/lcu        League client discovery + REST client
+internal/watcher    poll loop, auto-accept, event hub
+internal/ddragon    Data Dragon loader and disk cache
+internal/builds     match ingest, aggregate store, Riot compiler, display resolver
+internal/api        HTTP API, SSE, embedded UI
+web/                Vue 3 + Vite frontend (embedded into the binary at build time)
+```
+
+API:
+
+```
+GET  /api/status                      watcher snapshot + recent events
+GET  /api/events                      SSE: status, log
+POST /api/auto-accept  {"enabled":b}  toggle
+POST /api/accept                      accept the current ready check
+GET  /api/champions                   champion list (Data Dragon)
+GET  /api/champions/{key}/build?role= merged build for a champion
+GET  /api/champions/{key}/info        Riot tactical + playstyle info (from the client)
+GET  /api/champselect                 champ select: teams, bench (ranked), comp analysis
+POST /api/champselect/swap/{id}       swap with a bench champion
+POST /api/champselect/reroll          spend a reroll
+GET  /api/live                        in-game scoreboard from the Live Client Data API
+GET  /api/eog                         post-game stats block
+GET  /api/me/{id}?mode=aram|sr        your mastery + recent record on a champion
+GET  /api/session                     today's games, wins, losses
+GET  /api/champions/{key}/spells      ability cooldowns per rank (Data Dragon)
+POST /api/runes/apply                 write a rune page into the client and select it
+POST /api/champselect/trade/{id}      request (or ?accept=1 accept) a champion trade
+GET  /api/builds/status               key present, compile progress, compiled patches
+POST /api/builds/compile?queue=ranked|aram   start a compile run
+POST /api/builds/compile/stop         cancel it
+```
+
+## Electron
+
+```bash
+make app     # run the desktop shell against bin/ezlol
+make dmg     # package ezlol.app + .dmg into electron/dist
+```
+
+The shell spawns `bin/ezlol` (or reuses one already listening on 7331), sandboxes the renderer, and opens
+external links in the system browser. Closing the window keeps the watcher alive in the Dock; Cmd+Q quits both.
+The **Overlay** toggle shrinks the window to an always-on-top panel on the right edge; **Auto** does that when a
+game starts and restores the window when it ends. `Cmd+Shift+E` toggles the overlay from anywhere. Electron
+keeps its own profile in `~/Library/Application Support/ezlol-app`, separate from the backend's data directory.
+
+## Security notes
+
+- The LCU and the in-game Live Client Data API both present self-signed certificates on loopback; verification
+  is disabled for those two loopback clients only.
+- The server binds to loopback and sets CSP, `X-Frame-Options: DENY` and `nosniff`. Images are allowed from
+  `ddragon.leagueoflegends.com` only.
+- The Riot key is read from the environment, sent only in the `X-Riot-Token` header to `*.api.riotgames.com`,
+  and never persisted or logged.
+- `typescript` is pinned to 5.x because `vue-tsc` 3.3 does not support TypeScript 7.

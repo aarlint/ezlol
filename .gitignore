@@ -1,0 +1,14 @@
+/ezlol
+/bin/
+/data/
+/web/node_modules/
+/web/dist/*
+!/web/dist/.keep
+.env
+.DS_Store
+ezlol.log
+vite.log
+electron.log
+/electron/dist/
+/electron/node_modules/
+electron-build.log
