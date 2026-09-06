@@ -8,8 +8,12 @@ web:
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-build: web
+build: web ocr
 	go build -ldflags "$(LDFLAGS)" -o bin/ezlol ./cmd/ezlol
+
+# macOS only: screen OCR helper for augment-pick detection (needs Xcode CLT).
+ocr:
+	@if [ "$$(uname)" = "Darwin" ]; then swiftc -O -o bin/ezlol-ocr tools/ocr/main.swift; else echo "ocr helper: macOS only"; fi
 
 run: build
 	./bin/ezlol
