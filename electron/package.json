@@ -1,7 +1,7 @@
 {
   "name": "ezlol-app",
   "productName": "ezlol",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "League of Legends queue auto-accept and build viewer",
   "private": true,
   "main": "main.js",
@@ -24,7 +24,11 @@
       "target": ["dmg", "zip"],
       "icon": "icon.png",
       "darkModeSupport": true,
-      "extraResources": [{ "from": "../bin/ezlol", "to": "ezlol" }]
+      "extraResources": [
+        { "from": "../bin/ezlol", "to": "ezlol" },
+        { "from": "../bin/ezlol-ocr", "to": "ezlol-ocr" }
+      ],
+      "extendInfo": { "NSScreenCaptureUsageDescription": "ezlol reads the augment selection screen to recommend a pick." }
     },
     "win": {
       "target": ["nsis", "portable"],

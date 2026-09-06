@@ -19,6 +19,7 @@ import (
 	"github.com/aarlint/ezlol/internal/builds"
 	"github.com/aarlint/ezlol/internal/ddragon"
 	"github.com/aarlint/ezlol/internal/live"
+	"github.com/aarlint/ezlol/internal/screen"
 	"github.com/aarlint/ezlol/internal/watcher"
 )
 
@@ -33,13 +34,15 @@ type Server struct {
 	live      *live.Client
 	player    playerCache
 	info      infoCache
+	ocr       *screen.Reader
+	offer     offerState
 	ui        fs.FS  // built frontend, may be nil in dev
 	devProxy  string // vite dev server url, may be empty
 }
 
 // New wires a server.
 func New(log *slog.Logger, w *watcher.Watcher, dd *ddragon.Store, store *builds.Store, comp *builds.Compiler, community *builds.Community, ui fs.FS, devProxy string) *Server {
-	return &Server{log: log, watcher: w, dd: dd, store: store, compiler: comp, community: community, live: live.New(), ui: ui, devProxy: devProxy}
+	return &Server{log: log, watcher: w, dd: dd, store: store, compiler: comp, community: community, live: live.New(), ocr: screen.New(), ui: ui, devProxy: devProxy}
 }
 
 // Handler builds the router.

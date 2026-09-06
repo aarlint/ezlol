@@ -108,8 +108,8 @@ async function acceptNow() {
       </div>
     </div>
     <h3>Events</h3>
-    <div class="log">
-      <div v-for="(l, i) in [...logs].reverse()" :key="i" class="row" :class="l.level">
+    <div class="log" v-autoscroll>
+      <div v-for="(l, i) in logs" :key="i" class="row" :class="l.level">
         <span class="t">{{ time(l.time) }}</span><span>{{ l.message }}</span>
       </div>
       <div v-if="!logs.length" class="muted">No events yet.</div>

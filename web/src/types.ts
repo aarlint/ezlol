@@ -208,6 +208,16 @@ export interface Live {
   hint: string
   focus: string
   focusWhy: string
+  offer?: AugmentOffer
+  ocr: string
+}
+export interface AugmentOffer {
+  active: boolean
+  pending: boolean
+  level: number
+  offered: Augment[] | null
+  best?: string
+  why?: string
 }
 
 export interface Mastery {

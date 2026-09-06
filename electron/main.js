@@ -42,7 +42,12 @@ async function startBackend() {
   if (!fs.existsSync(bin)) throw new Error(`backend not found at ${bin}; run make build`)
   const args = ['-no-open', '-addr', `127.0.0.1:${PORT}`]
   if (DEV_UI) args.push('-dev', DEV_UI)
-  backend = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
+  const env = { ...process.env }
+  if (process.platform === 'darwin') {
+    const ocr = app.isPackaged ? path.join(process.resourcesPath, 'ezlol-ocr') : path.join(__dirname, '..', 'bin', 'ezlol-ocr')
+    if (fs.existsSync(ocr)) env.EZLOL_OCR = ocr
+  }
+  backend = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env })
   backend.stdout.on('data', (d) => process.stdout.write(d))
   backend.stderr.on('data', (d) => process.stderr.write(d))
   backend.on('exit', (code) => {

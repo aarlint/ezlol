@@ -15,8 +15,11 @@ Local helper for League of Legends, with an ARAM focus.
 4. **Season builds** – current-patch build for any champion (starting items, core build order, boots,
    late items, runes, summoner spells, skill order), Rift or ARAM. Follows your pick in champ select and your
    champion in game. Shows your mastery, recent record and Riot's playstyle pips.
-5. **Post-game** – full scoreboard with damage, gold and items as soon as the client has it.
-6. **Electron shell** – native macOS window with an always-on-top compact overlay mode (manual or automatic
+5. **Augment picks (macOS)** – when an ARAM Mayhem augment selection is due (game start, levels 7/11/15) ezlol
+   OCRs the screen, recognises the three offered augments and tells you which to take, ranked by your champion's
+   win rate. Needs Screen Recording permission (System Settings → Privacy & Security) for ezlol / your terminal.
+6. **Post-game** – full scoreboard with damage, gold and items as soon as the client has it.
+7. **Electron shell** – native macOS window with an always-on-top compact overlay mode (manual or automatic
    when a game starts).
 
 Go backend, Vue 3 frontend, single binary. Everything runs on `127.0.0.1`; nothing leaves your machine except

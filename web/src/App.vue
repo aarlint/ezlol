@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, isElectron, subscribe } from './api'
 import * as sound from './sound'
 import type { Champion, LogEntry, Status } from './types'
@@ -28,6 +28,16 @@ async function setOverlay(on: boolean) {
   document.body.classList.toggle('overlay', on)
 }
 const toggleOverlay = () => setOverlay(!overlay.value)
+// Page mode drives the layout: idle (lobby, queue, post-game) shows the side
+// column; select and game modes drop it and spread the panels out.
+const forcedMode = new URLSearchParams(location.search).get('mode') // dev: ?mode=game|select|idle
+const mode = computed(() => {
+  if (forcedMode === 'game' || forcedMode === 'select' || forcedMode === 'idle') return forcedMode
+  const p = status.value?.phase
+  if (p === 'InProgress') return 'game'
+  if (p === 'ChampSelect') return 'select'
+  return 'idle'
+})
 const error = ref('')
 
 let unsub: (() => void) | null = null
@@ -75,6 +85,59 @@ onMounted(async () => {
   sound.notify('', '') // triggers the permission prompt once
 })
 onUnmounted(() => unsub?.())
+
+// Masonry packing: the dashboard grid uses tiny implicit rows and every panel
+// spans as many as its rendered height needs, so boxes of different heights
+// pack tightly instead of leaving row-height gaps.
+const ROW = 8
+const GAP = 10
+const mainEl = ref<HTMLElement | null>(null)
+let ro: ResizeObserver | null = null
+let mo: MutationObserver | null = null
+function pack(el: Element) {
+  const p = el as HTMLElement
+  // Measure content height with the span removed so growth and shrink both register.
+  p.style.gridRowEnd = 'span 1'
+  const h = p.scrollHeight
+  p.style.gridRowEnd = `span ${Math.max(1, Math.ceil((h + GAP) / (ROW + GAP)))}`
+}
+let packing = false
+let lastZoom = 1
+function packAll() {
+  if (!mainEl.value || packing) return
+  packing = true
+  const m = mainEl.value
+  // Measure unscaled, then fit: if the packed grid is taller than the window,
+  // scale the whole dashboard down so every box stays on screen (no scrolling in game).
+  const z = (m.style as unknown as { zoom: string }).zoom
+  ;(m.style as unknown as { zoom: string }).zoom = '1'
+  for (const child of Array.from(m.children)) pack(child)
+  const avail = window.innerHeight - m.getBoundingClientRect().top - 12
+  const need = m.scrollHeight
+  let zoom = need > avail ? Math.max(0.55, avail / need) : 1
+  zoom = Math.round(zoom * 100) / 100
+  if (Math.abs(zoom - lastZoom) < 0.02 && z) zoom = lastZoom
+  lastZoom = zoom
+  ;(m.style as unknown as { zoom: string }).zoom = String(zoom)
+  packing = false
+}
+window.addEventListener('resize', () => requestAnimationFrame(packAll))
+function observeAll() {
+  if (!mainEl.value || !ro) return
+  ro.disconnect()
+  for (const child of Array.from(mainEl.value.children)) ro.observe(child)
+  packAll()
+}
+onMounted(() => {
+  ro = new ResizeObserver(() => requestAnimationFrame(packAll))
+  mo = new MutationObserver(() => observeAll())
+  if (mainEl.value) mo.observe(mainEl.value, { childList: true })
+  observeAll()
+})
+onUnmounted(() => {
+  ro?.disconnect()
+  mo?.disconnect()
+})
 watch(soundOn, (v) => sound.setEnabled(v))
 
 function select(c: Champion) {
@@ -116,19 +179,16 @@ async function toggleAuto() {
 
     <div v-if="error" class="note">{{ error }}</div>
 
-    <div class="layout" :class="{ ingame: status?.phase === 'InProgress' || status?.phase === 'ChampSelect' }">
-      <div class="side" style="display: grid; gap: 16px">
-        <QueuePanel :status="status" :logs="logs" @select="select" />
-        <ChampionPicker :champions="champions" :selected="selected" @select="select" />
-        <CompilePanel />
-      </div>
-      <div style="display: grid; gap: 16px">
-        <ChampSelect v-if="status?.phase === 'ChampSelect'" @preview="select" />
-        <EndOfGame v-if="!['ChampSelect', 'InProgress', 'ReadyCheck'].includes(status?.phase ?? '')" />
-        <!-- In game: build (augments first) on top, scoreboard below -->
-        <BuildPanel v-if="status?.phase === 'InProgress'" :champion="selected" :status="status" v-model:follow="followPick" />
-        <LiveGame v-if="status?.phase === 'InProgress'" @me="(c) => followPick && select(c)" />
-        <BuildPanel v-else :champion="selected" :status="status" v-model:follow="followPick" />
+    <div class="layout" :class="mode">
+      <div ref="mainEl" class="main" :class="mode">
+        <QueuePanel v-if="mode === 'idle'" :status="status" :logs="logs" @select="select" />
+        <EndOfGame v-if="mode === 'idle'" />
+        <ChampSelect v-if="mode === 'select'" @preview="select" />
+        <!-- In game: live boxes first, build boxes flow in after them -->
+        <LiveGame v-if="mode === 'game'" @me="(c) => followPick && select(c)" />
+        <BuildPanel :champion="selected" :status="status" :compact="mode === 'game'" v-model:follow="followPick" />
+        <ChampionPicker v-if="mode === 'idle'" :champions="champions" :selected="selected" @select="select" />
+        <CompilePanel v-if="mode === 'idle'" />
       </div>
     </div>
   </div>

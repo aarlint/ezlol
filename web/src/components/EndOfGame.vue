@@ -32,7 +32,7 @@ const share = (k: string) => {
 </script>
 
 <template>
-  <section class="panel" v-if="eog?.available">
+  <section class="panel span2" v-if="eog?.available">
     <h2>
       Post-game
       <span class="muted" style="margin-left: 10px">{{ fmtTime(eog.gameLength) }} · {{ eog.gameMode }}</span>

@@ -61,6 +61,8 @@ type liveResponse struct {
 	Hint     string             `json:"hint"`
 	Focus    string             `json:"focus"`
 	FocusWhy string             `json:"focusWhy"`
+	Offer    *augmentOffer      `json:"offer,omitempty"`
+	OCR      string             `json:"ocr"` // available | unavailable | error text
 	Events   []live.Event       `json:"events"`
 }
 
@@ -122,6 +124,7 @@ func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Hint = threatHint(resp.Players, resp.MyTeam)
 	resp.Focus, resp.FocusWhy = s.focusTarget(r.Context(), resp.Players, resp.MyTeam)
+	resp.Offer, resp.OCR = s.detectOffer(r.Context(), &resp)
 	evs := gd.Events.Events
 	if len(evs) > 12 {
 		evs = evs[len(evs)-12:]
