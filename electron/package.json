@@ -31,6 +31,7 @@
       "icon": "icon.png",
       "extraResources": [{ "from": "../bin/ezlol.exe", "to": "ezlol.exe" }]
     },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
+    "portable": { "artifactName": "${productName}-${version}-${os}-${arch}-portable.${ext}" }
   }
 }
