@@ -13,6 +13,7 @@ const role = ref('')
 // '' = follow the client's current queue; 'sr' | 'aram' = forced
 const mode = ref<'' | 'sr' | 'aram'>('')
 const loading = ref(false)
+const loadingChamp = ref<Champion | null>(null)
 const err = ref('')
 const me = ref<{ mastery: Mastery | null; record: PlayRecord | null } | null>(null)
 const info = ref<ChampionInfo | null>(null)
@@ -21,6 +22,7 @@ const DMG: Record<string, string> = { kMagic: 'AP', kPhysical: 'AD', kMixed: 'Mi
 async function load() {
   if (!props.champion) return
   loading.value = true
+  loadingChamp.value = props.champion
   err.value = ''
   try {
     build.value = await api.build(props.champion.key, role.value === 'NONE' ? undefined : role.value || undefined, mode.value || undefined)
@@ -99,6 +101,17 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
 </script>
 
 <template>
+  <!-- Loading modal: fixed overlay, never affects the grid -->
+  <Teleport to="body">
+      <div v-if="loading && loadingChamp" class="load-backdrop" aria-live="polite" aria-busy="true">
+        <div class="load-card">
+          <img :src="loadingChamp.image" :alt="loadingChamp.name" />
+          <div class="load-name">{{ loadingChamp.name }}</div>
+          <div class="load-sub">Loading build…</div>
+          <div class="spinner" />
+        </div>
+      </div>
+  </Teleport>
   <template v-if="!champion">
     <section class="panel"><div class="muted">Pick a champion. When you lock in during champ select the build shows here automatically.</div></section>
   </template>
@@ -271,6 +284,14 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
 
 
 <style scoped>
+.load-backdrop { position: fixed; inset: 0; z-index: 150; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); display: grid; place-items: center; animation: fadein .15s ease; }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+.load-card { display: grid; justify-items: center; gap: 8px; padding: 22px 34px; background: var(--panel-2); border: 1px solid var(--gold-dark); border-radius: var(--radius); box-shadow: var(--shadow-panel); }
+.load-card img { width: 96px; height: 96px; border: 2px solid var(--gold); border-radius: var(--radius-sm); box-shadow: 0 0 20px var(--gold-glow); }
+.load-name { font-family: var(--display); font-size: 20px; font-weight: 700; color: var(--gold-bright); letter-spacing: .04em; }
+.load-sub { color: var(--muted); font-size: 13px; }
+.spinner { width: 28px; height: 28px; border: 3px solid var(--gold-deep); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .roles { justify-content: flex-start; align-items: center; }
 .roles .sep { width: 1px; height: 22px; background: var(--gold-deep); margin: 0 4px; }
 .compact .build-head img { width: 44px; height: 44px; }
