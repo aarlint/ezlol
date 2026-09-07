@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import Widget from './Widget.vue'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, estRank, fmtTime } from '../api'
 import * as sound from '../sound'
 import { dismissKey, toast } from '../toast'
-import type { Champion, ChampionDetail, Live, LivePlayer } from '../types'
+import type { ArenaTier, Champion, ChampionDetail, Live, LivePlayer } from '../types'
 const pctf = (x: number) => `${Math.round(x * 100)}%`
 const tierLabel = (t: number) => ['', 'S', 'A', 'B', 'C', 'D'][t] ?? '?'
 
@@ -144,6 +144,40 @@ onMounted(() => {
 onUnmounted(() => clearInterval(timer))
 
 const isRift = computed(() => live.value?.mapId === 11)
+const isArena = computed(() => live.value?.mapId === 30)
+const tiers = ref<Record<string, ArenaTier>>({})
+let tiersLoaded = false
+watch(isArena, (v) => {
+  if (v && !tiersLoaded) {
+    tiersLoaded = true
+    api.arenaTiers().then((t) => (tiers.value = t)).catch(() => {})
+  }
+}, { immediate: true })
+const tierOf = (p: LivePlayer) => tiers.value[String(p.champion.id)]
+// Squishiest high-damage member of a team: kill them first.
+const teamFocus = (t: { players: string[] }) => {
+  let best: LivePlayer | undefined
+  let bestScore = -1e9
+  for (const n of t.players) {
+    const p = byName.value.get(n)
+    if (!p || p.isDead) continue
+    const dmg = p.itemAD / 40 + p.itemAP / 60 + p.kills * 0.4
+    const tough = p.itemArmor / 40 + p.itemMR / 40 + p.itemHP / 300
+    const sc = dmg - tough
+    if (sc > bestScore) {
+      bestScore = sc
+      best = p
+    }
+  }
+  return best
+}
+const tierLetter = (t?: ArenaTier) => (t ? ['', 'S', 'A', 'B', 'C', 'D'][t.tier] ?? String(t.tier) : '')
+const byName = computed(() => new Map((live.value?.players ?? []).map((p) => [p.name, p])))
+const arenaTeams = computed(() => live.value?.arena?.teams ?? [])
+const arenaMine = computed(() => arenaTeams.value.find((t) => t.mine))
+const arenaOthers = computed(() => arenaTeams.value.filter((t) => !t.mine))
+const unassigned = computed(() => (live.value?.arena?.unassigned ?? []).map((n) => byName.value.get(n)).filter(Boolean) as LivePlayer[])
+const teamPct = (t: { itemAD: number; itemAP: number }) => (t.itemAD + t.itemAP ? Math.round((100 * t.itemAD) / (t.itemAD + t.itemAP)) : 50)
 const opponent = computed(() => enemies.value.find((p) => p.champion.name === live.value?.opponent))
 const csm = (p: LivePlayer) => (live.value && live.value.gameTime > 60 ? (p.cs / (live.value.gameTime / 60)).toFixed(1) : '0')
 const POS: Record<string, string> = { TOP: 'Top', JUNGLE: 'Jg', MIDDLE: 'Mid', BOTTOM: 'Bot', UTILITY: 'Sup' }
@@ -214,24 +248,95 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
     <!-- Tactical: score, status, hints -->
     <Widget id="live-status" :w="3">
       <h2>Live <span class="clock">{{ fmtTime(live.gameTime) }}</span><span class="muted" style="margin-left: 8px">{{ live.gameMode }}</span></h2>
-      <div class="score"><span class="ally">{{ teamKills(myTeam) }}</span><span class="vs">vs</span><span class="enemy">{{ teamKills(enemies) }}</span></div>
+      <div v-if="isArena" class="score">
+        <span class="ally" title="Your team's kills">{{ arenaMine?.kills ?? 0 }}</span><span class="vs">kills · top enemy</span><span class="enemy" title="Best enemy team's kills">{{ arenaOthers[0]?.kills ?? 0 }}</span>
+      </div>
+      <div v-else class="score"><span class="ally">{{ teamKills(myTeam) }}</span><span class="vs">vs</span><span class="enemy">{{ teamKills(enemies) }}</span></div>
       <!-- Fixed-height status slot: content swaps without resizing the box -->
       <div class="status-slot">
         <div v-if="myself?.isDead" class="respawn-banner">RESPAWN IN {{ Math.ceil(myself.respawnTimer) }}</div>
         <div v-else-if="live.offer?.active" class="adv go">PICK {{ live.offer.best }}</div>
-        <div v-else-if="advantage.diff >= 2" class="adv go">NUMBERS +{{ advantage.diff }} — go!</div>
-        <div v-else-if="advantage.diff <= -2" class="adv back">OUTNUMBERED {{ advantage.diff }} — play safe</div>
+        <div v-else-if="!isArena && advantage.diff >= 2" class="adv go">NUMBERS +{{ advantage.diff }} — go!</div>
+        <div v-else-if="!isArena && advantage.diff <= -2" class="adv back">OUTNUMBERED {{ advantage.diff }} — play safe</div>
+        <div v-else-if="isArena && arenaMine && arenaMine.alive < arenaMine.players.length" class="adv back">{{ arenaMine.players.length - arenaMine.alive }} of yours down — {{ arenaMine.alive }} alive</div>
         <div v-else-if="live.offer?.pending" class="offer-pending">Augment pick due (lvl {{ live.offer.level }}) — die or recall. {{ live.ocr !== 'available' ? `Scan: ${live.ocr}` : '' }}</div>
         <div v-else class="offer-pending quiet">—</div>
       </div>
       <div v-if="live.focus" class="hintline"><b style="color: var(--red)">Focus {{ live.focus }}</b> — {{ live.focusWhy }}</div>
       <div v-if="live.hint" class="hintline">Build: {{ live.hint }}</div>
-      <div v-if="enemyBack.length" class="down"><span class="muted">Enemy back:</span><span v-for="p in enemyBack" :key="p.name" class="pill"><img :src="p.champion.image" />{{ p.champion.name }} {{ Math.ceil(p.respawnTimer) }}s</span></div>
+      <div v-if="!isArena && enemyBack.length" class="down"><span class="muted">Enemy back:</span><span v-for="p in enemyBack" :key="p.name" class="pill"><img :src="p.champion.image" />{{ p.champion.name }} {{ Math.ceil(p.respawnTimer) }}s</span></div>
       <div v-if="downSpells.length" class="down"><span class="muted">Down:</span><span v-for="x in downSpells" :key="x.p.name + x.s.name" class="pill"><img :src="x.s.image" />{{ x.p.champion.name }} {{ x.s.name }} {{ fmtTime(x.left) }}</span></div>
     </Widget>
 
+    <!-- Arena: your team -->
+    <Widget v-if="isArena" id="arena-mine" :w="6" class="live">
+      <h2>Your team <span v-if="arenaMine" class="muted" style="margin-left: 8px; text-transform: none; letter-spacing: 0">{{ arenaMine.kills }} kills · {{ arenaMine.alive }}/{{ arenaMine.players.length }} alive</span></h2>
+      <template v-if="arenaMine">
+        <template v-for="t in [arenaMine]" :key="t.id">
+            <div v-for="p in t.players.map((n) => byName.get(n)).filter(Boolean) as LivePlayer[]" :key="p.name" class="prow" :class="{ me: p.isMe, dead: p.isDead }">
+              <div class="portrait" @click="toggleRow(p)" title="Click: ability cooldowns">
+                <img :src="p.champion.image" :alt="p.champion.name" />
+                <span v-if="p.isDead" class="respawn">✕</span>
+                <span class="lvl">{{ p.level }}</span>
+              </div>
+              <div class="info">
+                <div class="pname">{{ p.champion.name }} <span v-if="tierOf(p)" class="tier-pip" :class="'t' + tierOf(p)!.tier" :title="`Arena tier ${tierLetter(tierOf(p))} · avg place ${tierOf(p)!.avgPlace.toFixed(2)}`">{{ tierLetter(tierOf(p)) }}</span> <span class="muted">{{ p.name }}</span></div>
+                <div class="kda">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }} <span class="istats"><b v-if="p.itemAD" class="ad">{{ p.itemAD }} AD</b><b v-if="p.itemAP" class="ap">{{ p.itemAP }} AP</b><b v-if="p.itemArmor" class="ar">{{ p.itemArmor }} AR</b><b v-if="p.itemMR" class="mr">{{ p.itemMR }} MR</b><b v-if="p.itemHP" class="hp">{{ p.itemHP }} HP</b></span></div>
+              </div>
+              <div class="items"><img v-for="it in (p.items ?? []).filter((i) => i.image)" :key="it.id" :src="it.image" :title="it.name" /></div>
+              <div class="spells"><img v-for="(s, i) in p.spells ?? []" :key="i" :src="s.image" :title="s.name" /></div>
+              <div v-if="expanded[p.name] && details[p.champion.key]" class="abilities">
+                <span v-for="sp in details[p.champion.key].spells" :key="sp.key" class="ab" :title="`${sp.name}: ${strip(sp.tooltip).slice(0, 220)} — CDs ${sp.cooldowns.join('/')}`">
+                  <img :src="sp.image" :alt="sp.name" /><b>{{ sp.key }}</b>
+                  <span>{{ cdAt(sp.cooldowns, estRank(p.level, sp.key)) === null ? '—' : `≈${cdAt(sp.cooldowns, estRank(p.level, sp.key))}s` }}</span>
+                </span>
+              </div>
+            </div>
+        </template>
+      </template>
+      <div v-else class="muted">Teams show up after the first fights (they come from kill assists).</div>
+    </Widget>
+
+    <!-- Arena: enemy teams -->
+    <Widget v-if="isArena" id="arena-teams" :w="6" class="live">
+      <h2>Enemy teams <span class="muted" style="margin-left: 8px; text-transform: none; letter-spacing: 0">by threat · click portrait for cooldowns</span></h2>
+      <div v-for="t in arenaOthers" :key="t.id" class="ateam">
+        <div class="ahead">
+          <span class="tid">Team {{ t.id }}</span>
+          <span class="threat"><i :style="{ width: t.threat + '%' }" /></span>
+          <span class="muted">{{ t.kills }} kills · {{ t.alive }}/{{ t.players.length }} alive · AD {{ teamPct(t) }}% / AP {{ 100 - teamPct(t) }}%</span>
+          <span v-if="teamFocus(t)" class="focus">focus <b>{{ teamFocus(t)!.champion.name }}</b></span>
+        </div>
+            <div v-for="p in t.players.map((n) => byName.get(n)).filter(Boolean) as LivePlayer[]" :key="p.name" class="prow" :class="{ me: p.isMe, dead: p.isDead }">
+              <div class="portrait" @click="toggleRow(p)" title="Click: ability cooldowns">
+                <img :src="p.champion.image" :alt="p.champion.name" />
+                <span v-if="p.isDead" class="respawn">✕</span>
+                <span class="lvl">{{ p.level }}</span>
+              </div>
+              <div class="info">
+                <div class="pname">{{ p.champion.name }} <span v-if="tierOf(p)" class="tier-pip" :class="'t' + tierOf(p)!.tier" :title="`Arena tier ${tierLetter(tierOf(p))} · avg place ${tierOf(p)!.avgPlace.toFixed(2)}`">{{ tierLetter(tierOf(p)) }}</span> <span class="muted">{{ p.name }}</span></div>
+                <div class="kda">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }} <span class="istats"><b v-if="p.itemAD" class="ad">{{ p.itemAD }} AD</b><b v-if="p.itemAP" class="ap">{{ p.itemAP }} AP</b><b v-if="p.itemArmor" class="ar">{{ p.itemArmor }} AR</b><b v-if="p.itemMR" class="mr">{{ p.itemMR }} MR</b><b v-if="p.itemHP" class="hp">{{ p.itemHP }} HP</b></span></div>
+              </div>
+              <div class="items"><img v-for="it in (p.items ?? []).filter((i) => i.image)" :key="it.id" :src="it.image" :title="it.name" /></div>
+              <div class="spells"><img v-for="(s, i) in p.spells ?? []" :key="i" :src="s.image" :title="s.name" /></div>
+              <div v-if="expanded[p.name] && details[p.champion.key]" class="abilities">
+                <span v-for="sp in details[p.champion.key].spells" :key="sp.key" class="ab" :title="`${sp.name}: ${strip(sp.tooltip).slice(0, 220)} — CDs ${sp.cooldowns.join('/')}`">
+                  <img :src="sp.image" :alt="sp.name" /><b>{{ sp.key }}</b>
+                  <span>{{ cdAt(sp.cooldowns, estRank(p.level, sp.key)) === null ? '—' : `≈${cdAt(sp.cooldowns, estRank(p.level, sp.key))}s` }}</span>
+                </span>
+              </div>
+            </div>
+      </div>
+      <div v-if="unassigned.length" class="ateam">
+        <div class="ahead"><span class="tid">Not yet placed</span><span class="muted">no kills involving them yet</span></div>
+        <div class="row" style="gap: 4px">
+          <span v-for="p in unassigned" :key="p.name" class="pill" :title="p.name"><img :src="p.champion.image" style="width: 18px; height: 18px" />{{ p.champion.name }}</span>
+        </div>
+      </div>
+    </Widget>
+
     <!-- Enemies -->
-    <Widget id="live-enemies" :w="6" class="live">
+    <Widget v-if="!isArena" id="live-enemies" :w="6" class="live">
       <h2>Enemies <span class="muted" style="text-transform: none; letter-spacing: 0; margin-left: 8px">click a spell when used · click portrait for cooldowns</span></h2>
         <div v-for="p in enemies" :key="p.name" class="prow" :class="{ dead: p.isDead }">
           <div class="portrait" @click="toggleRow(p)" title="Click: ability cooldowns">
@@ -260,7 +365,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
     </Widget>
 
     <!-- Your team -->
-    <Widget id="live-allies" :w="6" class="live">
+    <Widget v-if="!isArena" id="live-allies" :w="6" class="live">
       <h2>Your team</h2>
         <div v-for="p in myTeam" :key="p.name" class="prow" :class="{ me: p.isMe, dead: p.isDead }">
           <div class="portrait" @click="toggleRow(p)" title="Click: ability cooldowns">
@@ -424,6 +529,15 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 .spell { position: relative; padding: 0; border: 0; background: none; box-shadow: none; }
 .spell.down img { filter: grayscale(1) brightness(.4); }
 .spell .cd { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: 10px; font-weight: 700; color: var(--amber); text-shadow: 0 0 4px #000; }
+.tier-pip { font-family: var(--display); font-size: 10px; width: 16px; height: 16px; display: inline-grid; place-items: center; border: 1px solid var(--gold-deep); color: var(--muted); vertical-align: 1px; }
+.tier-pip.t1 { color: #ff8a3d; border-color: #ff8a3d; } .tier-pip.t2 { color: var(--gold); border-color: var(--gold); } .tier-pip.t3 { color: var(--hextech-2); border-color: var(--hextech-dim); }
+.ateam { border: 1px solid var(--line); background: var(--surface-raised); padding: 6px; margin-bottom: 8px; }
+.ahead { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; font-size: 12px; }
+.focus { margin-left: auto; font-size: 11px; color: var(--muted); }
+.focus b { color: var(--red); }
+.tid { font-family: var(--display); color: var(--gold); letter-spacing: .08em; text-transform: uppercase; }
+.threat { width: 80px; height: 6px; background: var(--surface-input); border: 1px solid var(--gold-deep); overflow: hidden; }
+.threat i { display: block; height: 100%; background: linear-gradient(90deg, var(--amber), var(--red)); }
 .buy-img { width: 16px; height: 16px; vertical-align: -3px; border: 1px solid var(--gold-deep); }
 .abil { display: flex; gap: 8px; font-family: var(--display); }
 .istats { margin-left: 6px; display: inline-flex; gap: 5px; font-size: 10px; }

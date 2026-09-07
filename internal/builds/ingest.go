@@ -90,7 +90,7 @@ func QueueTag(queueID int) string {
 	switch queueID {
 	case 450, 2400, 100: // ARAM, ARAM Mayhem, Butcher's Bridge
 		return "aram"
-	case 1700, 1710: // Arena
+	case 1700, 1710, 1750: // Arena (duos), Arena 3x6
 		return "arena"
 	default:
 		return "sr"

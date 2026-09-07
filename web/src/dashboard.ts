@@ -21,16 +21,16 @@ const COLUMNS = 12
  * Ids not listed come after, in mount order. W is the default width in columns.
  */
 const ORDER = [
-  'live-status', 'live-enemies', 'live-you', 'live-allies', 'live-objectives', 'live-matchup', 'live-shopping', 'live-killfeed',
+  'live-status', 'arena-mine', 'live-enemies', 'live-you', 'arena-teams', 'live-allies', 'live-objectives', 'live-matchup', 'live-shopping', 'live-killfeed',
   'cs-team', 'cs-enemies', 'cs-bench',
   'queue', 'postgame',
-  'build-head', 'items', 'boots', 'runes', 'spells', 'aug-prismatic', 'aug-gold', 'aug-silver',
+  'build-head', 'prismatic', 'synergies', 'items', 'boots', 'runes', 'spells', 'aug-prismatic', 'aug-gold', 'aug-silver',
   'picker', 'compile', 'build-empty', 'build-loading',
 ]
 /** Default height cap (rows) for boxes whose content keeps growing (feeds, lists). */
-const MAXH: Record<string, number> = { 'live-shopping': 8, 'live-killfeed': 8, queue: 10, picker: 9, boots: 14, 'aug-prismatic': 10, 'aug-gold': 10, 'aug-silver': 10 }
+const MAXH: Record<string, number> = { 'live-shopping': 8, 'live-killfeed': 8, queue: 10, picker: 9, boots: 14, 'aug-prismatic': 10, 'aug-gold': 10, 'aug-silver': 10, 'arena-teams': 30 }
 const W: Record<string, number> = {
-  'live-enemies': 6, 'live-allies': 6, 'cs-team': 4, 'cs-enemies': 4, 'cs-bench': 4, postgame: 6,
+  'live-enemies': 6, 'live-allies': 6, 'arena-mine': 6, 'arena-teams': 6, 'cs-team': 4, 'cs-enemies': 4, 'cs-bench': 4, postgame: 6,
 }
 const CELL = 40
 const MARGIN = 6

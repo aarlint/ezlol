@@ -20,8 +20,12 @@ Local companion app for League of Legends: auto-accept, live game intel, builds 
 5. **Augment picks (macOS)** – when an ARAM Mayhem augment selection is due (game start, levels 7/11/15) ezlol
    OCRs the screen, recognises the three offered augments and tells you which to take, ranked by your champion's
    win rate. Needs Screen Recording permission (System Settings → Privacy & Security) for ezlol / your terminal.
-6. **Post-game** – full scoreboard with damage, gold and items as soon as the client has it.
-7. **Electron shell** – native macOS/Windows window with auto-update on Windows.
+6. **Arena** – the live screen regroups the lobby into its teams (derived from kill assists, since the game
+   API reports everyone as one team): your trio/duo, every enemy team ranked by threat with AD/AP split and
+   items, plus Arena builds from op.gg (prismatic items, best partners, augment stats by average placement)
+   and the same on-screen augment pick assist ranked by placement.
+7. **Post-game** – full scoreboard with damage, gold and items as soon as the client has it.
+8. **Electron shell** – native macOS/Windows window with self-update.
 
 Go backend, Vue 3 frontend, single binary. Everything runs on `127.0.0.1`; nothing leaves your machine except
 read-only requests to Riot's CDN, community stat sites and, optionally, the Riot API.
@@ -77,6 +81,7 @@ Two data sources, merged:
 
 | Source | Needs | Gives |
 |---|---|---|
+| **op.gg Arena stats** (`/champions/arena/{id}`) + **blitz.gg Arena augment stats** | nothing | Arena: items, prismatic items, best partners, champion-specific augment placements; global augment tiers per stage. |
 | **Riot in-client recommendations** (LCU `/lol-perks/v1/recommended-pages/...`) | League client running | Rune pages and summoner spells Riot recommends for the champion/role, Summoner's Rift (map 11) or Howling Abyss (map 12). Always available. |
 | **op.gg ARAM stats** (`lol-api-champion.op.gg`, ~8.5M games/patch) | nothing | ARAM: starting items, core build, boots, 4th–6th options, rune pages, spells, skill order + full level path, win/pick rate, tier/rank. Cached 3 h. |
 | **aramgg.com Mayhem augments** + CommunityDragon icons + blitz.gg descriptions | nothing | ARAM Mayhem augment win/pick rate and tier per champion (Tencent CN + client uploads), grouped by rarity. Cached 6 h. |

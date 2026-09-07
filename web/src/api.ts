@@ -1,4 +1,4 @@
-import type { Build, BuildsStatus, RunePage, ChampSelect, Champion, ChampionDetail, ChampionInfo, Eog, Live, LogEntry, Mastery, PlayRecord, Session, SettingsView, Status, UpdateInfo } from './types'
+import type { ArenaTier, Build, BuildsStatus, RunePage, ChampSelect, Champion, ChampionDetail, ChampionInfo, Eog, Live, LogEntry, Mastery, PlayRecord, Session, SettingsView, Status, UpdateInfo } from './types'
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...init })
@@ -36,6 +36,7 @@ export const api = {
   update: () => req<UpdateInfo>('/api/update'),
   checkUpdate: () => req<UpdateInfo>('/api/update/check', { method: 'POST' }),
   mastery: () => req<Record<string, Mastery>>('/api/mastery'),
+  arenaTiers: () => req<Record<string, ArenaTier>>('/api/arena/tiers'),
   applyRunes: (championId: number, page: RunePage) =>
     req<{ ok: boolean }>('/api/runes/apply', { method: 'POST', body: JSON.stringify({ championId, page }) }),
   spells: (key: string) => req<ChampionDetail>(`/api/champions/${encodeURIComponent(key)}/spells`),

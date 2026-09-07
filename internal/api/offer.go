@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"sync"
@@ -36,6 +37,7 @@ type offerState struct {
 	lastScan  time.Time
 	lastGT    float64
 	lastLines []string
+	picks     int // Arena: completed picks this game
 }
 
 // detectOffer decides whether an augment pick is likely on screen and, if so,
@@ -50,7 +52,11 @@ func (s *Server) detectOffer(ctx context.Context, live *liveResponse) (*augmentO
 	if !s.settings.Get().OCR {
 		return nil, "disabled"
 	}
-	if builds.QueueTag(s.watcher.Status().QueueID) != "aram" {
+	tag := builds.QueueTag(s.watcher.Status().QueueID)
+	if tag == "arena" {
+		return s.detectArenaOffer(ctx, live)
+	}
+	if tag != "aram" {
 		return nil, "available"
 	}
 	// New game: reset.
@@ -179,6 +185,105 @@ func (s *Server) detectOffer(ctx context.Context, live *liveResponse) (*augmentO
 	}
 	if st.last == nil || !st.last.Active {
 		s.log.Info("augment offer detected", "level", off.Level, "offered", len(off.Offered), "best", off.Best)
+	}
+	st.last = off
+	return off, "available"
+}
+
+// detectArenaOffer scans continuously (every 3s, 1.5s while an offer is up):
+// Arena offers augments between rounds, and nothing in the live data marks it.
+func (s *Server) detectArenaOffer(ctx context.Context, live *liveResponse) (*augmentOffer, string) {
+	st := &s.offer
+	var me *livePlayer
+	for i := range live.Players {
+		if live.Players[i].IsMe {
+			me = &live.Players[i]
+		}
+	}
+	if me == nil {
+		return nil, "available"
+	}
+	interval := 3 * time.Second
+	if st.last != nil && st.last.Active {
+		interval = 1500 * time.Millisecond
+	}
+	if time.Since(st.lastScan) < interval {
+		if st.last != nil && st.last.Active && time.Since(st.lastScan) < 6*time.Second {
+			return st.last, "available"
+		}
+		return nil, "available"
+	}
+	st.lastScan = time.Now()
+	lines, err := s.ocr.Read(ctx)
+	if err != nil {
+		return nil, err.Error()
+	}
+	augs, _, err := s.community.ArenaAugments(ctx, s.watcher.Status().Patch, me.Champion.ID)
+	if err != nil {
+		return nil, "available"
+	}
+	byID := map[int]builds.Augment{}
+	cands := map[string]string{}
+	for _, a := range augs {
+		byID[a.ID] = a
+		if n := screen.Normalize(a.Name); len(n) >= 4 {
+			cands[n] = strconv.Itoa(a.ID)
+		}
+	}
+	keys := screen.OfferLayout(screen.Match(lines, cands))
+	if len(keys) < 2 {
+		if st.last != nil && st.last.Active && time.Since(st.last.ScannedAt) > 4*time.Second {
+			st.picks++
+			st.last = nil
+		}
+		return nil, "available"
+	}
+	off := &augmentOffer{Active: true, Level: st.picks + 1, ScannedAt: time.Now()}
+	for _, k := range keys {
+		id, _ := strconv.Atoi(k.Key)
+		if a, ok := byID[id]; ok {
+			off.Offered = append(off.Offered, a)
+		}
+	}
+	// Lower average placement wins; tier breaks ties; then sample size.
+	sort.SliceStable(off.Offered, func(i, j int) bool {
+		a, b := off.Offered[i], off.Offered[j]
+		ap, bp := a.AvgPlace, b.AvgPlace
+		if ap == 0 {
+			ap = 9
+		}
+		if bp == 0 {
+			bp = 9
+		}
+		if a.Games >= 100 && b.Games >= 100 && ap != bp {
+			return ap < bp
+		}
+		ta, tb := a.Tier, b.Tier
+		if ta == 0 {
+			ta = 9
+		}
+		if tb == 0 {
+			tb = 9
+		}
+		if ta != tb {
+			return ta < tb
+		}
+		return ap < bp
+	})
+	if len(off.Offered) > 0 {
+		b := off.Offered[0]
+		off.Best = b.Name
+		switch {
+		case b.Games >= 100 && b.AvgPlace > 0:
+			off.Why = fmt.Sprintf("avg place %.2f on %s over %d games", b.AvgPlace, me.Champion.Name, b.Games)
+		case b.Tier > 0:
+			off.Why = "tier " + strconv.Itoa(b.Tier) + " across all champions"
+		default:
+			off.Why = "best available"
+		}
+	}
+	if st.last == nil || !st.last.Active {
+		s.log.Info("arena augment offer detected", "pick", off.Level, "offered", len(off.Offered), "best", off.Best)
 	}
 	st.last = off
 	return off, "available"

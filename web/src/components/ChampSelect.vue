@@ -4,7 +4,7 @@ import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, fmtPoints } from '../api'
 import * as sound from '../sound'
 import { toast } from '../toast'
-import type { ChampSelect, Champion, CompSummary, DamageProfile, Mastery, PlayRecord } from '../types'
+import type { ArenaTier, ChampSelect, Champion, CompSummary, DamageProfile, Mastery, PlayRecord } from '../types'
 
 const comp = (c: CompSummary) => `${c.tanks} tank · ${c.ranged} ranged · ${c.melee} melee · CC ${c.cc} · tough ${c.durability}`
 
@@ -30,6 +30,12 @@ async function maybeApplyRunes(c: ChampSelect) {
   }
 }
 const cs = ref<ChampSelect | null>(null)
+const tiers = ref<Record<string, ArenaTier>>({})
+let tiersLoaded = false
+const tierLetter = (id: number) => {
+  const t = tiers.value[String(id)]
+  return t ? `${['', 'S', 'A', 'B', 'C', 'D'][t.tier] ?? t.tier} · #${t.avgPlace.toFixed(2)}` : ''
+}
 const busy = ref(false)
 const err = ref('')
 let timer: number | undefined
@@ -40,6 +46,10 @@ async function poll() {
   try {
     cs.value = await api.champSelect()
     const c = cs.value
+    if (c.mode === 'arena' && !tiersLoaded) {
+      tiersLoaded = true
+      api.arenaTiers().then((t) => (tiers.value = t)).catch(() => {})
+    }
     if (c.active) maybeApplyRunes(c)
     else appliedFor = 0
     const received = c.myTeam?.some((p) => p.trade === 'RECEIVED') ?? false
@@ -104,6 +114,7 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
           <img v-if="p.champion.image" :src="p.champion.image" :alt="p.champion.name" />
           <div v-else class="empty" />
           <div class="cname">{{ p.champion.name || '…' }}</div>
+          <div v-if="cs.mode === 'arena' && tierLetter(p.champion.id)" class="rec">{{ tierLetter(p.champion.id) }}</div>
           <div class="muted">{{ p.isMe ? mast(p.mastery) : p.name }}</div>
           <div v-if="p.isMe && p.record" class="rec">{{ rec(p.record) }}</div>
           <button v-if="!p.isMe && p.tradeId && p.trade === 'AVAILABLE'" :disabled="busy" @click.stop="act(() => api.trade(p.tradeId!))">Trade</button>

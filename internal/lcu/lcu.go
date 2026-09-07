@@ -566,3 +566,49 @@ func (c *Client) ApplyRunePage(ctx context.Context, prefix string, p RunePage) (
 	}
 	return out, err
 }
+
+// GameflowPlayer is one entry of the gameflow session's team list. In Arena the
+// teamParticipantId is the sub-team (1..N) the player fights for.
+type GameflowPlayer struct {
+	ChampionID int    `json:"championId"`
+	PUUID      string `json:"puuid"`
+	SummonerID int64  `json:"summonerId"`
+	Skin       int    `json:"lastSelectedSkinIndex"`
+	Team       int    `json:"teamParticipantId"`
+}
+
+// GameflowPlayers returns every player in the current game with their sub-team.
+func (c *Client) GameflowPlayers(ctx context.Context) ([]GameflowPlayer, error) {
+	var s struct {
+		GameData struct {
+			GameID  int64            `json:"gameId"`
+			TeamOne []GameflowPlayer `json:"teamOne"`
+			TeamTwo []GameflowPlayer `json:"teamTwo"`
+		} `json:"gameData"`
+	}
+	if err := c.Get(ctx, "/lol-gameflow/v1/session", &s); err != nil {
+		return nil, err
+	}
+	out := append([]GameflowPlayer{}, s.GameData.TeamOne...)
+	seen := map[string]bool{}
+	for _, p := range out {
+		seen[p.PUUID] = true
+	}
+	for _, p := range s.GameData.TeamTwo {
+		if !seen[p.PUUID] {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+// SummonerName resolves a puuid to "gameName" via the client.
+func (c *Client) SummonerName(ctx context.Context, puuid string) (string, error) {
+	var s struct {
+		GameName string `json:"gameName"`
+	}
+	if err := c.Get(ctx, "/lol-summoner/v2/summoners/puuid/"+puuid, &s); err != nil {
+		return "", err
+	}
+	return s.GameName, nil
+}
