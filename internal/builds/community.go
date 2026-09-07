@@ -409,21 +409,34 @@ func (c *Community) Augments(ctx context.Context, patch string, champID int) ([]
 		}
 		out = append(out, a)
 	}
+	// Best first within a rarity: win rate, but only trust it on a real sample;
+	// thin samples fall back to aramgg's tier, then win rate.
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Rarity != out[j].Rarity {
-			return rarityRank(out[i].Rarity) < rarityRank(out[j].Rarity)
+		a, b := out[i], out[j]
+		if a.Rarity != b.Rarity {
+			return rarityRank(a.Rarity) < rarityRank(b.Rarity)
 		}
-		ti, tj := out[i].Tier, out[j].Tier
-		if ti == 0 {
-			ti = 9
+		const minGames = 200
+		if a.Games >= minGames && b.Games >= minGames {
+			if a.WinRate != b.WinRate {
+				return a.WinRate > b.WinRate
+			}
+			return a.Games > b.Games
 		}
-		if tj == 0 {
-			tj = 9
+		if (a.Games >= minGames) != (b.Games >= minGames) {
+			return a.Games >= minGames
 		}
-		if ti != tj {
-			return ti < tj
+		ta, tb := a.Tier, b.Tier
+		if ta == 0 {
+			ta = 9
 		}
-		return out[i].WinRate > out[j].WinRate
+		if tb == 0 {
+			tb = 9
+		}
+		if ta != tb {
+			return ta < tb
+		}
+		return a.WinRate > b.WinRate
 	})
 	return out, scope, nil
 }
