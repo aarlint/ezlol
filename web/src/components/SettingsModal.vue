@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from '../api'
 import type { SettingsView, UpdateInfo } from '../types'
+import type { AppSettings } from '../api'
 import * as sound from '../sound'
 
 const emit = defineEmits<{ close: [] }>()
@@ -16,6 +17,22 @@ const loadError = ref('')
 const soundOn = ref(sound.enabled())
 const autoRunes = ref(localStorage.getItem('ezlol.autoRunes') === 'on')
 const dialog = ref<HTMLElement | null>(null)
+// Desktop-only settings live in the Electron shell; absent in a plain browser.
+const desktop = !!window.ezlol?.getAppSettings
+const appS = ref<AppSettings | null>(null)
+async function saveApp(patch: Partial<Pick<AppSettings, 'launchAtLogin' | 'startInTray'>>) {
+  if (!window.ezlol?.setAppSettings) return
+  busy.value = true
+  try {
+    appS.value = await window.ezlol.setAppSettings(patch)
+    flash('Saved', 'ok')
+  } catch (e) {
+    flash(errText(e), 'err')
+  } finally {
+    busy.value = false
+  }
+}
+if (desktop) window.ezlol?.onAppSettings?.((v) => (appS.value = v))
 let msgTimer: ReturnType<typeof setTimeout> | undefined
 let pressOnBackdrop = false
 
@@ -49,6 +66,7 @@ async function load() {
     return
   }
   s.value = view
+  if (desktop) window.ezlol?.getAppSettings?.().then((v) => (appS.value = v)).catch(() => (appS.value = null))
   try {
     upd.value = await api.update()
   } catch (e) {
@@ -288,6 +306,37 @@ onBeforeUnmount(() => {
               </dd>
             </div>
           </dl>
+
+          <!-- Desktop app (Electron only) -->
+          <template v-if="desktop && appS">
+            <h3>Desktop</h3>
+            <dl class="rows">
+              <div class="setting">
+                <dt>
+                  <span class="lbl"><label id="set-lbl-login" for="set-login">Launch at login</label></span>
+                  <span v-if="appS.loginItemSupported" class="desc muted">Start ezlol when you sign in, so queue pops are accepted before you even open it.</span>
+                  <span v-else class="desc warn">Available in the installed app only.</span>
+                </dt>
+                <dd>
+                  <button id="set-login" type="button" role="switch" class="toggle" :class="{ on: appS.launchAtLogin }" :aria-checked="appS.launchAtLogin" aria-labelledby="set-lbl-login" :disabled="!appS.loginItemSupported || busy" @click="saveApp({ launchAtLogin: !appS.launchAtLogin })">
+                    <span class="track" aria-hidden="true" /><span class="state">{{ appS.launchAtLogin ? 'On' : 'Off' }}</span>
+                  </button>
+                </dd>
+              </div>
+
+              <div class="setting">
+                <dt>
+                  <span class="lbl"><label id="set-lbl-tray" for="set-tray">{{ appS.platform === 'darwin' ? 'Start in the menu bar' : 'Start in the tray' }}</label></span>
+                  <span class="desc muted">Start hidden behind a {{ appS.platform === 'darwin' ? 'menu bar' : 'tray' }} icon; closing the window keeps ezlol running there.</span>
+                </dt>
+                <dd>
+                  <button id="set-tray" type="button" role="switch" class="toggle" :class="{ on: appS.startInTray }" :aria-checked="appS.startInTray" aria-labelledby="set-lbl-tray" :disabled="busy" @click="saveApp({ startInTray: !appS.startInTray })">
+                    <span class="track" aria-hidden="true" /><span class="state">{{ appS.startInTray ? 'On' : 'Off' }}</span>
+                  </button>
+                </dd>
+              </div>
+            </dl>
+          </template>
         </template>
 
         <div v-else-if="loadError" class="empty">

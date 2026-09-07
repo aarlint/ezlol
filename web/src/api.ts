@@ -70,6 +70,15 @@ export function fmtTime(sec: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
+/** Desktop-only settings owned by the Electron shell (not the Go backend). */
+export interface AppSettings {
+  launchAtLogin: boolean
+  startInTray: boolean
+  loginItemSupported: boolean
+  platform: string
+  packaged: boolean
+}
+
 declare global {
   interface Window {
     ezlol?: {
@@ -78,6 +87,9 @@ declare global {
       onUpdate?: (fn: (state: { status: string; version?: string; error?: string; progress?: number }) => void) => void
       installUpdate?: () => Promise<boolean>
       checkUpdate?: () => Promise<{ status: string; version?: string; error?: string; progress?: number }>
+      getAppSettings?: () => Promise<AppSettings>
+      setAppSettings?: (patch: Partial<Pick<AppSettings, 'launchAtLogin' | 'startInTray'>>) => Promise<AppSettings>
+      onAppSettings?: (fn: (s: AppSettings) => void) => void
     }
   }
 }
