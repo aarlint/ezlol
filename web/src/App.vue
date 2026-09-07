@@ -8,6 +8,7 @@ import type { Champion, LogEntry, Status } from './types'
 import QueuePanel from './components/QueuePanel.vue'
 import ChampionPicker from './components/ChampionPicker.vue'
 import BuildPanel from './components/BuildPanel.vue'
+import ChampionBar from './components/ChampionBar.vue'
 import CompilePanel from './components/CompilePanel.vue'
 import LiveGame from './components/LiveGame.vue'
 import ChampSelect from './components/ChampSelect.vue'
@@ -225,6 +226,9 @@ async function toggleAuto() {
     <Toasts />
     <SettingsModal v-if="showSettings" @close="showSettings = false" />
 
+    <!-- Champion card: fixed bar, never part of the grid below -->
+    <ChampionBar :champion="selected" :status="status" :screen="mode" :compact="mode === 'game'" v-model:follow="followPick" />
+
     <div class="layout" :class="mode">
       <div ref="mainEl" :key="modeKey + ':' + layoutVersion" class="main grid-stack" :class="[mode, { editing }]">
         <QueuePanel v-if="mode === 'idle'" :status="status" :logs="logs" @select="select" />
@@ -232,7 +236,7 @@ async function toggleAuto() {
         <ChampSelect v-if="mode === 'select'" @preview="select" />
         <!-- In game: live boxes first, build boxes flow in after them -->
         <LiveGame v-if="mode === 'game'" @me="(c) => followPick && select(c)" />
-        <BuildPanel :champion="selected" :status="status" :compact="mode === 'game'" v-model:follow="followPick" />
+        <BuildPanel :status="status" :compact="mode === 'game'" />
         <ChampionPicker v-if="mode === 'idle'" :champions="champions" :selected="selected" @select="select" />
         <CompilePanel v-if="mode === 'idle'" />
         <GhostWidget v-for="g in ghosts" :key="'ghost-' + g.id" :spec="g" />
