@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Widget from './Widget.vue'
 import { computed, onMounted, ref } from 'vue'
 import { api, fmtPoints } from '../api'
 import type { Champion, Mastery } from '../types'
@@ -34,7 +35,7 @@ function onEnter() {
 </script>
 
 <template>
-  <section class="panel">
+  <Widget id="picker" :w="3">
     <h2>Champion</h2>
     <div class="row">
       <input v-model="q" placeholder="Search champion…" @keydown.enter="onEnter" style="flex: 1; width: auto" />
@@ -47,7 +48,7 @@ function onEnter() {
         <span v-if="m(c)?.championLevel" class="m">{{ m(c).championLevel }}</span>
       </div>
     </div>
-  </section>
+  </Widget>
 </template>
 
 <style scoped>

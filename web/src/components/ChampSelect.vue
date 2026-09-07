@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Widget from './Widget.vue'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, fmtPoints } from '../api'
 import * as sound from '../sound'
@@ -93,7 +94,7 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
 
 <template>
   <template v-if="cs?.active">
-    <section class="panel">
+    <Widget id="cs-team" :w="4">
       <h2>Champ select <span class="muted" style="margin-left: 8px">{{ cs.mode === 'aram' ? 'ARAM' : cs.phase }} · {{ cs.timeLeft }}s</span>
         <label class="toggle" :class="{ on: autoRunes }" style="margin-left: auto" title="Set Riot's recommended rune page automatically for the champion you get" @click="autoRunes = !autoRunes"><span class="track" /><span>Auto runes</span></label>
       </h2>
@@ -115,9 +116,9 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
         <span class="muted">AD {{ pct(cs.allyProfile) }}% · AP {{ 100 - pct(cs.allyProfile) }}% · {{ comp(cs.allyComp) }}</span>
         <div v-if="cs.allyComp.needs?.length" class="hint">Comp is missing: {{ cs.allyComp.needs.join(', ') }}</div>
       </div>
-    </section>
+    </Widget>
 
-    <section v-if="cs.theirTeam?.length" class="panel">
+    <Widget v-if="cs.theirTeam?.length" id="cs-enemies" :w="4">
       <h2>Enemies</h2>
       <div class="team">
         <div v-for="c in cs.theirTeam" :key="c.id" class="cs-player" @click="emit('preview', c)">
@@ -130,9 +131,9 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
         <span class="muted">AD {{ pct(cs.enemyProfile) }}% · AP {{ 100 - pct(cs.enemyProfile) }}% · {{ comp(cs.enemyComp) }}</span>
         <div class="hint">{{ cs.enemyProfile.hint }}</div>
       </div>
-    </section>
+    </Widget>
 
-    <section v-if="cs.benchEnabled" class="panel span2">
+    <Widget v-if="cs.benchEnabled" id="cs-bench" :w="4">
       <h2>Bench
         <button class="primary" style="margin-left: auto" :disabled="busy || cs.rerollsRemaining <= 0" @click="act(api.reroll)">Reroll ({{ cs.rerollsRemaining }})</button>
       </h2>
@@ -147,7 +148,7 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
       </div>
       <div v-else class="muted">Bench is empty. Reroll or wait for teammates to trade.</div>
       <div v-if="rerollHint(cs)" class="hint" style="margin-top: 6px">{{ rerollHint(cs) }}</div>
-    </section>
+    </Widget>
   </template>
 </template>
 

@@ -10,7 +10,10 @@ permissions:
   contents: write
 
 env:
-  # No signing certificates in CI: ship unsigned builds.
+  # macOS signing/notarization is optional: add CSC_LINK (base64 .p12 of a "Developer ID
+  # Application" cert), CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and
+  # APPLE_TEAM_ID as repository secrets and the mac jobs sign + notarize automatically.
+  # Without them the builds are unsigned and the app updates itself via its own swap updater.
   CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
 jobs:
@@ -85,7 +88,21 @@ jobs:
         run: npm version --no-git-tag-version "${{ steps.ver.outputs.version }}" || true
       - name: Desktop app
         working-directory: electron
-        run: npm ci --no-audit --no-fund && npx electron-builder ${{ matrix.eb }} --publish never
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          npm ci --no-audit --no-fund
+          extra=""
+          if [[ "${{ matrix.goos }}" == "darwin" && -n "$CSC_LINK" ]]; then
+            extra="-c.mac.notarize=true"
+            unset CSC_IDENTITY_AUTO_DISCOVERY
+          fi
+          npx electron-builder ${{ matrix.eb }} --publish never $extra
       - uses: actions/upload-artifact@v4
         with:
           name: ezlol-${{ matrix.goos }}-${{ matrix.goarch }}

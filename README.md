@@ -1,20 +1,22 @@
 # ezlol
 
-Local helper for League of Legends, with an ARAM focus.
+Local companion app for League of Legends: auto-accept, live game intel, builds for every mode, and a desktop app that keeps itself up to date.
 
 1. **Queue watcher** – polls the League client and auto-accepts the ready check the moment your queue pops.
    Sound cue and desktop notification on pop and on champ select. Today's win/loss tally and streak.
 2. **Champ select** – your team and the enemy team with damage profile (AD/AP), comp shape (tanks, ranged,
-   CC, toughness) and what your comp is missing. ARAM bench ranked by your mastery, recent record and what the
+   CC, toughness) and what your comp is missing. Bench ranked by your mastery, recent record and what the
    team needs, with one-click swap, reroll and trade. **Apply** writes any rune page into the client and
    selects it; **Auto runes** does that for whatever champion you end up with.
 3. **Live game** (in-game Live Client Data, no key) – scoreboard for both teams, item-derived AD/AP/armor/MR per
    player, "what to build" threat tip, enemy summoner-spell cooldown tracker (click when they use it), death
    timers, numbers-advantage banner, focus-target suggestion, enemy ability cooldowns (click a portrait),
    item purchase feed, kill feed, your stats and gold.
-4. **Season builds** – current-patch build for any champion (starting items, core build order, boots,
-   late items, runes, summoner spells, skill order), Rift or ARAM. Follows your pick in champ select and your
-   champion in game. Shows your mastery, recent record and Riot's playstyle pips.
+4. **Builds** – current-patch build for any champion and mode: Summoner's Rift by lane and ARAM, plus
+   ARAM Mayhem augment tiers. Starting items, core build order, boots, late items, runes, summoner spells,
+   skill order and full level path, win/pick rates. Follows your pick in champ select and your champion in
+   game. Shows your mastery, recent record and Riot's playstyle pips. Summoner's Rift games also get
+   objective timers and a lane-matchup box with the opponent's ability cooldowns.
 5. **Augment picks (macOS)** – when an ARAM Mayhem augment selection is due (game start, levels 7/11/15) ezlol
    OCRs the screen, recognises the three offered augments and tells you which to take, ranked by your champion's
    win rate. Needs Screen Recording permission (System Settings → Privacy & Security) for ezlol / your terminal.
@@ -22,7 +24,21 @@ Local helper for League of Legends, with an ARAM focus.
 7. **Electron shell** – native macOS/Windows window with auto-update on Windows.
 
 Go backend, Vue 3 frontend, single binary. Everything runs on `127.0.0.1`; nothing leaves your machine except
-read-only requests to Riot's CDN and, optionally, the Riot API.
+read-only requests to Riot's CDN, community stat sites and, optionally, the Riot API.
+
+## Screenshots
+
+| Dashboard (Hextech theme) | Settings |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard-hextech.png) | ![Settings](docs/screenshots/settings.png) |
+
+| Linear dark | Neon | Synthwave |
+|---|---|---|
+| ![Linear](docs/screenshots/theme-linear.png) | ![Neon](docs/screenshots/theme-neon.png) | ![Synthwave](docs/screenshots/theme-synthwave.png) |
+
+| Terminal | Sketch |
+|---|---|
+| ![Terminal](docs/screenshots/theme-terminal.png) | ![Sketch](docs/screenshots/theme-sketch.png) |
 
 ## Install
 
@@ -78,6 +94,13 @@ hours; ezlol respects both limits and backs off on 429. A 200-match run is rough
 Static data (champion, item, rune and spell names and images) comes from Data Dragon and is cached under
 `ddragon/<version>/` in the data directory. It is refreshed daily.
 
+## Dashboard
+
+Every box is a widget on a 12-column grid. Flip **Edit layout** in the header to drag boxes around and
+resize them from the corner; the arrangement is saved per screen (lobby, champ select, in game) and
+restored next time. **Reset** forgets the saved layout for the current screen and goes back to the default
+arrangement. Boxes scroll internally when their content is taller than the widget.
+
 ## Themes
 
 Themes, switchable from the header dropdown (persisted): **Hextech** (classic League: gold frames, Cinzel
@@ -93,9 +116,13 @@ The ⚙ **Settings** dialog (any mode) holds everything user-facing: Riot API ke
 `settings.json` in the data directory with mode 0600, never logged), platform, matches per compile, compile on
 start, auto-accept, augment pick detection, update checks, sounds, auto runes.
 
-Updates: the backend checks GitHub releases on start and every six hours and shows a banner with a download
-link. The Windows build also self-updates in place (downloads in the background, installs on quit, "Restart to
-update" button). The macOS builds are unsigned, so macOS uses the download banner.
+Updates: the app checks GitHub releases on start and every six hours. **Windows** self-updates through
+electron-updater (background download, "Install & restart"). **macOS** self-updates through ezlol's own
+updater because the builds are unsigned: it downloads the zip for your CPU, verifies it against
+`SHA256SUMS.txt`, strips the quarantine flag, swaps `ezlol.app` in place (the folder must be writable by
+you, e.g. `/Applications` or `~/Applications`) and relaunches. To get rid of the Gatekeeper prompt and use
+in-place updates on macOS too, sign and notarize the builds: see [docs/SIGNING.md](docs/SIGNING.md) (five
+repository secrets; CI does the rest).
 
 ## Configuration
 

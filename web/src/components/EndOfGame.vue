@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Widget from './Widget.vue'
 import { onMounted, onUnmounted, ref } from 'vue'
 import { api, fmtTime } from '../api'
 import type { Eog, EogPlayer } from '../types'
@@ -32,7 +33,7 @@ const share = (k: string) => {
 </script>
 
 <template>
-  <section class="panel span2" v-if="eog?.available">
+  <Widget id="postgame" :w="6" v-if="eog?.available">
     <h2>
       Post-game
       <span class="muted" style="margin-left: 10px">{{ fmtTime(eog.gameLength) }} · {{ eog.gameMode }}</span>
@@ -59,7 +60,7 @@ const share = (k: string) => {
         </table>
       </div>
     </div>
-  </section>
+  </Widget>
 </template>
 
 <style scoped>

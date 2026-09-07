@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Widget from './Widget.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api } from '../api'
 import type { Champion, LogEntry, Session, Status } from '../types'
@@ -76,7 +77,7 @@ async function acceptNow() {
 </script>
 
 <template>
-  <section class="panel">
+  <Widget id="queue" :w="3">
     <h2>Queue watcher</h2>
     <div class="phase" :class="{ pop: status?.phase === 'ReadyCheck', queue: status?.phase === 'Matchmaking' }">{{ phaseLabel }}</div>
     <div v-if="status?.readyCheck" style="margin-bottom: 10px">
@@ -114,7 +115,7 @@ async function acceptNow() {
       </div>
       <div v-if="!logs.length" class="muted">No events yet.</div>
     </div>
-  </section>
+  </Widget>
 </template>
 
 <style scoped>

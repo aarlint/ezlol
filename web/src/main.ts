@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import { autoscroll } from './autoscroll'
+import 'gridstack/dist/gridstack.min.css'
 import './style.css'
 
 // Apply the saved theme before first paint to avoid a flash of the default.

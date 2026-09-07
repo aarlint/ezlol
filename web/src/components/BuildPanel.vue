@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Widget from './Widget.vue'
 import { ref, watch } from 'vue'
 import { api, fmtPoints, ROLES, ROLE_LABEL, winrate } from '../api'
 import { toast } from '../toast'
@@ -113,11 +114,11 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
       </div>
   </Teleport>
   <template v-if="!champion">
-    <section class="panel"><div class="muted">Pick a champion. When you lock in during champ select the build shows here automatically.</div></section>
+    <Widget id="build-empty" :w="3" :h="2"><div class="muted">Pick a champion. When you lock in during champ select the build shows here automatically.</div></Widget>
   </template>
   <template v-else-if="build">
     <!-- Header box -->
-    <section class="panel box-head" :class="{ compact }">
+    <Widget id="build-head" :w="3" :class="{ compact }">
       <div class="build-head">
         <img :src="build.champion.image" :alt="build.champion.name" />
         <div>
@@ -163,10 +164,10 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
         </div>
       </div>
       <div v-for="n in build.notes ?? []" :key="n" class="note">{{ n }}</div>
-    </section>
+    </Widget>
 
     <!-- Augments: one box per rarity -->
-    <section v-for="r in RARITIES" :key="r" class="panel aug-col" :class="[r, { compact }]" v-show="build.augments?.length">
+    <Widget v-for="r in RARITIES" :key="r" :id="'aug-' + r" :w="3" class="aug-col" :class="[r, { compact }]" v-show="build.augments?.length">
       <h2>{{ r }} augments <span class="muted" style="text-transform: none; letter-spacing: 0; margin-left: 8px">{{ build.augScope === 'champion' ? build.champion.name : 'global' }} · aramgg</span></h2>
       <div v-for="a in augBy(build, r)" :key="a.id" class="aug" :title="a.desc">
         <img v-if="a.icon" :src="a.icon" :alt="a.name" />
@@ -178,10 +179,10 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
       </div>
       <div v-if="!augBy(build, r).length" class="muted">no data</div>
       <button v-if="compact && (build.augments ?? []).filter((a) => a.rarity === r).length > 6" class="sm" style="margin-top: 6px" @click="expandAugs = !expandAugs">{{ expandAugs ? 'Top 6' : 'Show all' }}</button>
-    </section>
+    </Widget>
 
     <!-- Items -->
-    <section v-if="build.starting?.length || build.core?.length" class="panel">
+    <Widget v-if="build.starting?.length || build.core?.length" id="items" :w="3">
       <h2>Items</h2>
       <template v-if="build.starting?.length">
         <h3>Starting</h3>
@@ -205,9 +206,9 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
           </div>
         </div>
       </template>
-    </section>
+    </Widget>
 
-    <section v-if="build.boots?.length || build.late?.length" class="panel">
+    <Widget v-if="build.boots?.length || build.late?.length" id="boots" :w="3">
       <h2>Boots &amp; late items</h2>
       <template v-if="build.boots?.length">
         <h3>Boots</h3>
@@ -229,10 +230,10 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
           </div>
         </div>
       </template>
-    </section>
+    </Widget>
 
     <!-- Runes -->
-    <section v-if="build.runes?.length" class="panel">
+    <Widget v-if="build.runes?.length" id="runes" :w="3">
       <h2>Runes</h2>
       <div class="runes">
         <div v-for="(p, i) in build.runes" :key="i" class="rune-page">
@@ -250,10 +251,10 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
           </div>
         </div>
       </div>
-    </section>
+    </Widget>
 
     <!-- Spells + skills -->
-    <section v-if="build.spells?.length || build.skillOrder?.length" class="panel">
+    <Widget v-if="build.spells?.length || build.skillOrder?.length" id="spells" :w="3">
       <h2>Spells &amp; skills</h2>
       <template v-if="build.spells?.length">
         <div class="sets">
@@ -277,9 +278,9 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
           <span v-for="(k, i) in build.skillPath" :key="i" class="lv" :class="k.toLowerCase()"><i>{{ i + 1 }}</i>{{ k }}</span>
         </div>
       </template>
-    </section>
+    </Widget>
   </template>
-  <section v-else-if="loading" class="panel"><div class="muted">Loading…</div></section>
+  <Widget v-else-if="loading" id="build-loading" :w="3" :h="2"><div class="muted">Loading…</div></Widget>
 </template>
 
 
@@ -308,9 +309,9 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
 .lv { width: 26px; height: 32px; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 12px; border: 1px solid var(--gold-deep); background: var(--surface-input); position: relative; }
 .lv i { position: absolute; top: 1px; left: 3px; font-size: 8px; font-style: normal; color: var(--dim); }
 .lv.q { color: #7fb3ff; } .lv.w { color: #7fe0a0; } .lv.e { color: #f0b232; } .lv.r { color: #e84057; }
-.aug-col.prismatic h2 { color: #c7f3ff; background: linear-gradient(90deg, rgba(63,180,216,.22), transparent); border-color: #3fb4d8; }
-.aug-col.gold h2 { color: var(--gold-bright); background: linear-gradient(90deg, rgba(200,170,110,.22), transparent); }
-.aug-col.silver h2 { color: #d8dde3; background: linear-gradient(90deg, rgba(139,155,176,.22), transparent); border-color: #8b9bb0; }
+.aug-col.prismatic h2 { color: var(--rarity-prismatic); background: linear-gradient(90deg, var(--rarity-prismatic-bg), transparent); }
+.aug-col.gold h2 { color: var(--rarity-gold); background: linear-gradient(90deg, var(--rarity-gold-bg), transparent); }
+.aug-col.silver h2 { color: var(--rarity-silver); background: linear-gradient(90deg, var(--rarity-silver-bg), transparent); }
 button.sm { padding: 4px 8px; font-size: 10px; }
 .aug { display: grid; grid-template-columns: 36px 1fr auto; gap: 8px; align-items: center; padding: 5px 6px; margin-bottom: 4px; border: 1px solid var(--line); background: var(--surface-raised); }
 .aug img { width: 36px; height: 36px; border: 1px solid var(--gold-deep); background: #000; }
