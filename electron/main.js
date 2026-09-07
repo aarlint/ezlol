@@ -1,5 +1,5 @@
 'use strict'
-const { app, BrowserWindow, shell, Menu, ipcMain, Notification } = require('electron')
+const { app, BrowserWindow, shell, Menu, ipcMain, Notification, Tray, nativeImage } = require('electron')
 const { spawn } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
@@ -14,7 +14,7 @@ const { MacUpdater } = require('./updater-mac')
 let macUpdater = null
 
 // Keep Chromium's profile out of the Go backend's data directory.
-app.setPath('userData', path.join(app.getPath('appData'), 'ezlol-app'))
+app.setPath('userData', process.env.EZLOL_USER_DATA || path.join(app.getPath('appData'), 'ezlol-app'))
 
 const PORT = Number(process.env.EZLOL_PORT || 7331)
 const URL = `http://127.0.0.1:${PORT}`
@@ -22,6 +22,114 @@ const DEV_UI = process.env.EZLOL_DEV || '' // e.g. http://localhost:5173 to prox
 
 let backend = null
 let win = null
+
+// One instance only: launching ezlol again (dock, Start menu, login item) shows
+// the existing window instead of starting a second backend.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => showWindow())
+}
+
+// ---- Desktop settings: launch at login, start in the tray / menu bar ----
+const APP_SETTINGS_DEFAULTS = { launchAtLogin: false, startInTray: false }
+const appSettingsPath = () => path.join(app.getPath('userData'), 'app-settings.json')
+function loadAppSettings() {
+  try {
+    return { ...APP_SETTINGS_DEFAULTS, ...JSON.parse(fs.readFileSync(appSettingsPath(), 'utf8')) }
+  } catch {
+    return { ...APP_SETTINGS_DEFAULTS }
+  }
+}
+function saveAppSettings(s) {
+  try {
+    fs.mkdirSync(path.dirname(appSettingsPath()), { recursive: true })
+    fs.writeFileSync(appSettingsPath(), JSON.stringify(s, null, 2))
+  } catch (err) {
+    console.error('could not save app settings', err)
+  }
+}
+let appSettings = loadAppSettings()
+let tray = null
+
+/** Register / unregister the login item. Only meaningful for the installed app: in dev it would register the electron binary. */
+function applyLoginItem() {
+  if (!app.isPackaged) return
+  try {
+    app.setLoginItemSettings({ openAtLogin: appSettings.launchAtLogin, args: appSettings.startInTray ? ['--hidden'] : [] })
+  } catch (err) {
+    console.error('login item', err)
+  }
+}
+function loginItemState() {
+  if (!app.isPackaged) return { launchAtLogin: appSettings.launchAtLogin, loginItemSupported: false }
+  try {
+    return { launchAtLogin: !!app.getLoginItemSettings().openAtLogin, loginItemSupported: true }
+  } catch {
+    return { launchAtLogin: appSettings.launchAtLogin, loginItemSupported: false }
+  }
+}
+function appSettingsView() {
+  return { ...appSettings, ...loginItemState(), platform: process.platform, packaged: app.isPackaged }
+}
+
+function showWindow() {
+  if (!win) createWindow(true)
+  else {
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  }
+  if (process.platform === 'darwin' && app.dock) app.dock.show().catch(() => {})
+}
+
+function trayLabel() {
+  return process.platform === 'darwin' ? 'Start in the menu bar' : 'Start in the tray'
+}
+function updateTray() {
+  if (!appSettings.startInTray) {
+    if (tray) {
+      tray.destroy()
+      tray = null
+    }
+    return
+  }
+  if (!tray) {
+    // nativeImage picks tray@2x.png on HiDPI screens by itself.
+    tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'tray', 'tray.png')))
+    tray.setToolTip('ezlol')
+    if (process.platform !== 'darwin') tray.on('click', showWindow)
+  }
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Open ezlol', click: showWindow },
+      { type: 'separator' },
+      { label: 'Launch at login', type: 'checkbox', checked: appSettings.launchAtLogin, enabled: app.isPackaged, click: (item) => setAppSettings({ launchAtLogin: item.checked }) },
+      { label: trayLabel(), type: 'checkbox', checked: appSettings.startInTray, click: (item) => setAppSettings({ startInTray: item.checked }) },
+      { type: 'separator' },
+      {
+        label: 'Quit ezlol',
+        click: () => {
+          app.isQuitting = true
+          app.quit()
+        },
+      },
+    ]),
+  )
+}
+function setAppSettings(patch) {
+  const clean = {}
+  for (const k of Object.keys(APP_SETTINGS_DEFAULTS)) if (patch && typeof patch[k] === 'boolean') clean[k] = patch[k]
+  appSettings = { ...appSettings, ...clean }
+  saveAppSettings(appSettings)
+  applyLoginItem()
+  updateTray()
+  const view = appSettingsView()
+  if (win) win.webContents.send('app-settings', view)
+  return view
+}
+ipcMain.handle('app-settings:get', () => appSettingsView())
+ipcMain.handle('app-settings:set', (_e, patch) => setAppSettings(patch))
 
 const BIN = process.platform === 'win32' ? 'ezlol.exe' : 'ezlol'
 function backendPath() {
@@ -79,8 +187,9 @@ function hideAllWindows() {
   }
 }
 
-function createWindow() {
+function createWindow(show = true) {
   win = new BrowserWindow({
+    show,
     width: 1280,
     height: 860,
     minWidth: 900,
@@ -106,6 +215,13 @@ function createWindow() {
     if (!url.startsWith(URL)) {
       e.preventDefault()
       shell.openExternal(url)
+    }
+  })
+  // Tray mode: the close button hides the window and ezlol keeps accepting queues.
+  win.on('close', (e) => {
+    if (appSettings.startInTray && !app.isQuitting) {
+      e.preventDefault()
+      win.hide()
     }
   })
   win.on('closed', () => (win = null))
@@ -242,11 +358,12 @@ app.whenReady().then(async () => {
     app.quit()
     return
   }
-  createWindow()
+  // "Start in the tray": come up hidden behind the tray icon, whoever launched us.
+  createWindow(!appSettings.startInTray)
+  applyLoginItem()
+  updateTray()
   setupUpdates()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
+  app.on('activate', () => showWindow())
 })
 
 app.on('before-quit', () => {

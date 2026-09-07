@@ -113,6 +113,13 @@ screen *can* show, including ones that only appear later (bench in ARAM, enemy p
 is offered as a dashed ghost slot: place it once and the real box drops into that spot when it shows up, so
 nothing shifts mid-game. Boxes keep their exact positions; gaps are allowed.
 
+## Desktop app
+
+The installed app adds a **Desktop** section to Settings: **Launch at login** registers ezlol as a login
+item, and **Start in the tray** (menu bar on macOS) starts it hidden behind a tray icon whose menu
+opens the window, flips both options and quits. Closing the window in tray mode keeps the watcher
+running, so queue pops are still accepted. Launching ezlol a second time just brings the window back.
+
 ## Themes
 
 Themes, switchable from the header dropdown (persisted): **Hextech** (classic League: gold frames, Cinzel

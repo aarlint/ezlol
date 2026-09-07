@@ -672,4 +672,6 @@ code { background: var(--surface-input); border: 1px solid var(--gold-deep); pad
 .sets { max-height: none; }
 
 
-.gear { min-height: 40px; }
+.gear { min-height: 40px; width: 46px; padding: 0; display: inline-grid; place-items: center; }
+.gear svg { display: block; transition: transform .25s ease; }
+.gear:hover svg { transform: rotate(30deg); }
