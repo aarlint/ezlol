@@ -27,6 +27,8 @@
 
 - [x] Champion picker is a dropdown card on the champion bar (portrait/name opens it; Esc / outside click closes; Enter picks first match)
 
+- [x] Save layout / Reset restore exact positions (double placement on remount fixed; gridstack child adoption off)
+
 ## Next
 - [x] v1.0.8 released 2026-09-07 (all jobs green)
 - [x] Trade buttons verified in ARAM champ select (AVAILABLE + ids)

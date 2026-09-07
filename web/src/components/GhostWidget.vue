@@ -18,7 +18,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="el" class="grid-stack-item ghost" :gs-id="spec.id">
+  <div ref="el" class="grid-stack-item ghost" :gs-id="'ghost:' + spec.id" :data-gs-opts="JSON.stringify({ w: spec.w, h: spec.h })">
     <section class="panel grid-stack-item-content ghost-box">
       <div class="wcontent">
         <div class="g-title">{{ spec.title }}</div>
