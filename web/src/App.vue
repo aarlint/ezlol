@@ -6,7 +6,6 @@ import { api, isElectron, subscribe } from './api'
 import * as sound from './sound'
 import type { Champion, LogEntry, Status } from './types'
 import QueuePanel from './components/QueuePanel.vue'
-import ChampionPicker from './components/ChampionPicker.vue'
 import BuildPanel from './components/BuildPanel.vue'
 import ChampionBar from './components/ChampionBar.vue'
 import CompilePanel from './components/CompilePanel.vue'
@@ -226,8 +225,8 @@ async function toggleAuto() {
     <Toasts />
     <SettingsModal v-if="showSettings" @close="showSettings = false" />
 
-    <!-- Champion card: fixed bar, never part of the grid below -->
-    <ChampionBar :champion="selected" :status="status" :screen="mode" :compact="mode === 'game'" v-model:follow="followPick" />
+    <!-- Champion card: fixed bar with the champion picker as a dropdown, never part of the grid below -->
+    <ChampionBar :champion="selected" :champions="champions" :status="status" :screen="mode" :compact="mode === 'game'" v-model:follow="followPick" @select="select" />
 
     <div class="layout" :class="mode">
       <div ref="mainEl" :key="modeKey + ':' + layoutVersion" class="main grid-stack" :class="[mode, { editing }]">
@@ -237,7 +236,6 @@ async function toggleAuto() {
         <!-- In game: live boxes first, build boxes flow in after them -->
         <LiveGame v-if="mode === 'game'" @me="(c) => followPick && select(c)" />
         <BuildPanel :status="status" :compact="mode === 'game'" />
-        <ChampionPicker v-if="mode === 'idle'" :champions="champions" :selected="selected" @select="select" />
         <CompilePanel v-if="mode === 'idle'" />
         <GhostWidget v-for="g in ghosts" :key="'ghost-' + g.id" :spec="g" />
       </div>

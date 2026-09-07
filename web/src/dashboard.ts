@@ -36,7 +36,7 @@ const LIVE_RIGHT: Record<string, Pos> = { 'live-you': P(9, 0, 3, 8), 'live-shopp
 // Build block under the two team boxes: items | runes, then spells | boots.
 const BUILD_UNDER_TEAMS: Record<string, Pos> = { items: P(3, 20, 3, 12), runes: P(6, 20, 3, 12), spells: P(3, 32, 3, 10), boots: P(6, 32, 3, 12) }
 export const DEFAULT_LAYOUTS: Record<ModeKey, Record<string, Pos>> = {
-  idle: { queue: P(0, 0, 3, 10), picker: P(0, 10, 3, 9), compile: P(0, 19, 3, 6), postgame: P(3, 24, 6, 12), ...BUILD_IDLE },
+  idle: { queue: P(0, 0, 3, 18), compile: P(0, 18, 3, 6), postgame: P(3, 24, 6, 12), ...BUILD_IDLE },
   select: {
     'cs-team': P(0, 0, 4, 9), 'cs-enemies': P(4, 0, 4, 9), 'cs-bench': P(8, 0, 4, 9),
     items: P(0, 9, 3, 12), boots: P(3, 9, 3, 12), runes: P(6, 9, 3, 12), spells: P(9, 9, 3, 12),
@@ -90,12 +90,11 @@ const LIVE_COMMON: WidgetSpec[] = [
 ]
 export const CATALOG: Record<ModeKey, WidgetSpec[]> = {
   idle: [
-    { id: 'queue', title: 'Queue watcher', w: 3, h: 10 },
+    { id: 'queue', title: 'Queue watcher', w: 3, h: 18 },
     { id: 'postgame', title: 'Post-game', w: 6, h: 12, when: 'after a game' },
     ...BUILD_WIDGETS,
     ...AUG_WIDGETS.map((w) => ({ ...w, when: 'ARAM / Arena build' })),
     ...ARENA_BUILD.map((w) => ({ ...w, when: 'Arena build' })),
-    { id: 'picker', title: 'Champion picker', w: 3, h: 9 },
     { id: 'compile', title: 'Build data', w: 3, h: 6 },
   ],
   select: [

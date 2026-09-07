@@ -1,13 +1,16 @@
 <script setup lang="ts">
 // Fixed champion bar above the widget grid: portrait, mode / lane buttons,
-// source and tier, your mastery and record, the Follow switch. It drives the
+// source and tier, your mastery and record, the Follow switch. Clicking the
+// portrait / name opens the champion picker as a dropdown card. It drives the
 // shared build state that the build widgets read; it is never part of the grid.
-import { computed, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import ChampionPicker from './ChampionPicker.vue'
 import { fmtPoints, ROLES, ROLE_LABEL, winrate } from '../api'
 import { buildState as s, loadBuild, pickMode, pickRole } from '../build'
 import type { Champion, Status } from '../types'
 
-const props = defineProps<{ champion: Champion | null; status: Status | null; screen: 'idle' | 'select' | 'game'; compact?: boolean }>()
+const props = defineProps<{ champion: Champion | null; champions: Champion[]; status: Status | null; screen: 'idle' | 'select' | 'game'; compact?: boolean }>()
+const emit = defineEmits<{ select: [c: Champion] }>()
 const follow = defineModel<boolean>('follow', { default: true })
 
 const build = computed(() => s.build)
@@ -16,6 +19,31 @@ const me = computed(() => s.me)
 const DMG: Record<string, string> = { kMagic: 'AP', kPhysical: 'AD', kMixed: 'Mixed' }
 const ATK: Record<string, string> = { kRanged: 'ranged', kMelee: 'melee' }
 const PIPS = ['damage', 'durability', 'crowdControl', 'mobility', 'utility'] as const
+
+// Champion picker dropdown
+const pickerOpen = ref(false)
+const root = ref<HTMLElement | null>(null)
+function choose(c: Champion) {
+  pickerOpen.value = false
+  // A manual pick while the client has you on another champion would be
+  // undone by the next status tick; the user clearly wants to browse.
+  if (props.status?.pickedChampion && props.status.pickedChampion !== c.id) follow.value = false
+  emit('select', c)
+}
+function onDoc(e: MouseEvent) {
+  if (pickerOpen.value && root.value && !root.value.contains(e.target as Node)) pickerOpen.value = false
+}
+function onKey(e: KeyboardEvent) {
+  if (pickerOpen.value && e.key === 'Escape') pickerOpen.value = false
+}
+onMounted(() => {
+  document.addEventListener('mousedown', onDoc)
+  document.addEventListener('keydown', onKey)
+})
+onUnmounted(() => {
+  document.removeEventListener('mousedown', onDoc)
+  document.removeEventListener('keydown', onKey)
+})
 
 watch(
   () => props.champion?.id,
@@ -32,6 +60,7 @@ watch(
   () => {
     s.mode = ''
     s.role = ''
+    pickerOpen.value = false
     void loadBuild()
   },
 )
@@ -77,17 +106,19 @@ const games = (r: string) => build.value?.roles?.find((x) => x.role === r)?.game
     </div>
   </Teleport>
 
-  <section class="panel champbar" :class="{ compact, empty: !build }" aria-label="Champion">
+  <section ref="root" class="panel champbar" :class="{ compact, empty: !build }" aria-label="Champion">
     <template v-if="build">
-      <img class="portrait" :src="build.champion.image" :alt="build.champion.name" />
+      <button type="button" class="who-btn" :class="{ open: pickerOpen }" :aria-expanded="pickerOpen" aria-haspopup="dialog" title="Search for another champion" @click="pickerOpen = !pickerOpen">
+        <img class="portrait" :src="build.champion.image" alt="" />
+        <span class="who">
+          <span class="name">{{ build.champion.name }}<i class="chev" :class="{ up: pickerOpen }" /></span>
+          <span class="title">
+            {{ build.champion.title }} · patch {{ patchOf(build.patch) }}<span v-if="build.mode === 'aram'"> · Howling Abyss</span><span v-else-if="build.mode === 'arena'"> · Arena</span>
+          </span>
+        </span>
+      </button>
       <div class="rows">
         <div class="row1">
-          <div class="who">
-            <div class="name">{{ build.champion.name }}</div>
-            <div class="title">
-              {{ build.champion.title }} · patch {{ patchOf(build.patch) }}<span v-if="build.mode === 'aram'"> · Howling Abyss</span><span v-else-if="build.mode === 'arena'"> · Arena</span>
-            </div>
-          </div>
           <div class="roles">
             <button :class="{ active: build.mode === 'sr' }" @click="pickMode('sr')">Rift</button>
             <button :class="{ active: build.mode === 'aram' }" @click="pickMode('aram')">ARAM</button>
@@ -99,8 +130,6 @@ const games = (r: string) => build.value?.roles?.find((x) => x.role === r)?.game
               </button>
             </template>
           </div>
-        </div>
-        <div class="row2">
           <div class="facts">
             <span class="badge" :class="build.source">
               {{ build.source === 'opgg' ? (build.mode === 'arena' ? 'op.gg Arena stats' : build.mode === 'aram' ? 'op.gg ARAM stats' : 'op.gg ranked stats') : build.source === 'riot' ? 'Compiled from ranked matches' : build.source === 'lcu' ? 'Riot in-client recommendations' : 'No data' }}
@@ -108,6 +137,10 @@ const games = (r: string) => build.value?.roles?.find((x) => x.role === r)?.game
             <span v-if="build.tier" class="badge tier" :class="'t' + build.tier">Tier {{ tierLabel(build.tier) }} · #{{ build.rank }}<template v-if="build.pickRate"> · {{ pctf(build.pickRate) }} pick</template></span>
             <span v-if="build.total.games && build.mode !== 'arena'" class="muted">{{ build.total.games }} games · {{ winrate(build.total) }} win rate</span>
             <span v-else-if="build.total.games" class="muted">{{ build.total.games }} games · avg place {{ (build.avgPlace ?? 0).toFixed(2) }} · {{ pctf(build.top1 ?? 0) }} first</span>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="facts">
             <span v-if="me?.mastery" class="badge lcu" :title="`Highest grade ${me.mastery.highestGrade}`">You: M{{ me.mastery.championLevel }} · {{ fmtPoints(me.mastery.championPoints) }}</span>
             <span v-if="me?.record" class="badge riot">
               Recent {{ build.mode === 'aram' ? 'ARAM' : 'Rift' }}: {{ me.record.wins }}W {{ me.record.games - me.record.wins }}L ·
@@ -134,30 +167,45 @@ const games = (r: string) => build.value?.roles?.find((x) => x.role === r)?.game
     </template>
     <template v-else-if="s.loading"><div class="muted">Loading build…</div></template>
     <template v-else-if="champion">
-      <img class="portrait" :src="champion.image" :alt="champion.name" />
-      <div class="who">
-        <div class="name">{{ champion.name }}</div>
-        <div class="title">{{ s.error || 'No build data' }}</div>
-      </div>
+      <button type="button" class="who-btn" :aria-expanded="pickerOpen" aria-haspopup="dialog" @click="pickerOpen = !pickerOpen">
+        <img class="portrait" :src="champion.image" alt="" />
+        <span class="who">
+          <span class="name">{{ champion.name }}<i class="chev" :class="{ up: pickerOpen }" /></span>
+          <span class="title">{{ s.error || 'No build data' }}</span>
+        </span>
+      </button>
       <button @click="loadBuild(champion)">Retry</button>
     </template>
-    <div v-else class="muted">Pick a champion. When you lock in during champ select the build shows here automatically.</div>
+    <template v-else>
+      <button type="button" class="who-btn" :aria-expanded="pickerOpen" aria-haspopup="dialog" @click="pickerOpen = !pickerOpen">
+        <span class="who">
+          <span class="name">Pick a champion<i class="chev" :class="{ up: pickerOpen }" /></span>
+          <span class="title">Search here, or lock in during champ select and the build follows automatically.</span>
+        </span>
+      </button>
+    </template>
+    <ChampionPicker :champions="champions" :selected="champion" :open="pickerOpen" @select="choose" @close="pickerOpen = false" />
   </section>
 </template>
 
 <style scoped>
-.champbar { display: flex; align-items: center; gap: 14px; padding: 6px 130px 6px 14px; min-height: 76px; box-sizing: border-box; }
-.champbar.empty { min-height: 48px; padding-right: 14px; }
+.champbar { display: flex; align-items: center; gap: 14px; padding: 6px 130px 6px 8px; min-height: 76px; box-sizing: border-box; z-index: 5; }
+.champbar.empty { min-height: 48px; padding-right: 8px; }
 /* Pinned top-right so it never decides where the rest of the bar wraps */
 .follow { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); padding: 0 8px; min-height: 0; background: none; box-shadow: none; border-color: transparent; }
 .follow.on { color: var(--gold-bright); }
+/* Portrait + name is the picker trigger: a button wearing the card's own look */
+.who-btn { display: flex; align-items: center; gap: 12px; padding: 4px 10px 4px 4px; min-height: 0; background: none; box-shadow: none; border: 1px solid transparent; border-radius: var(--radius-sm); text-align: left; text-transform: none; letter-spacing: 0; font: inherit; color: inherit; cursor: pointer; }
+.who-btn:hover, .who-btn.open { border-color: var(--gold-deep); background: var(--gold-soft); box-shadow: none; }
 .portrait { width: 56px; height: 56px; flex: none; border: 2px solid var(--gold); border-radius: var(--radius-sm); box-shadow: var(--shadow-inset), 0 0 16px var(--gold-glow); }
-/* Row 1: who + mode / lane buttons. Row 2: stats badges + playstyle. Each wraps on its own. */
+.who { display: flex; flex-direction: column; min-width: 0; }
+.name { font-family: var(--display); font-size: 22px; font-weight: 700; letter-spacing: .04em; line-height: 1.1; color: var(--gold-bright); white-space: nowrap; display: inline-flex; align-items: center; gap: 10px; }
+.chev { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--muted); transition: transform .15s; }
+.chev.up { transform: rotate(180deg); }
+.title { color: var(--muted); font-style: italic; font-size: 12px; white-space: nowrap; }
+/* Row 1: mode / lane buttons + source. Row 2: your record + playstyle. Each wraps on its own. */
 .rows { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
 .row1, .row2 { display: flex; align-items: center; gap: 8px 18px; flex-wrap: wrap; }
-.who { min-width: 0; }
-.name { font-family: var(--display); font-size: 22px; font-weight: 700; letter-spacing: .04em; line-height: 1.1; color: var(--gold-bright); white-space: nowrap; }
-.title { color: var(--muted); font-style: italic; font-size: 12px; white-space: nowrap; }
 .roles { justify-content: flex-start; align-items: center; }
 .roles .sep { width: 1px; height: 22px; background: var(--gold-deep); margin: 0 4px; }
 .facts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

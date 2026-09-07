@@ -102,7 +102,8 @@ Static data (champion, item, rune and spell names and images) comes from Data Dr
 ## Dashboard
 
 The champion card (portrait, Rift / ARAM / Arena and lane buttons, tier, your mastery and record, **Follow**)
-is a fixed bar under the header on every screen; it never moves. Everything below it is a widget on a 12-column grid. Flip **Edit layout** in the header to drag boxes around and
+is a fixed bar under the header on every screen; it never moves. Click the portrait or name to open the
+champion picker as a dropdown: type to search, Enter picks the first match, sort by name or by your mastery. Everything below it is a widget on a 12-column grid. Flip **Edit layout** in the header to drag boxes around and
 resize them from the corner; the arrangement is remembered per screen (lobby, champ select, and in game
 for Rift, ARAM and Arena separately). Each screen ships with a symmetrical 3 | 6 | 3 column default: live
 scoreboards and team boxes in the middle, status and augments on the left, you / shopping / kill feed on the right.

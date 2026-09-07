@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import Widget from './Widget.vue'
-import { computed, onMounted, ref } from 'vue'
+// Champion search card. Lives in the champion bar's dropdown: it stays mounted
+// (v-show) so mastery loads once and the sort choice survives closing.
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { api, fmtPoints } from '../api'
 import type { Champion, Mastery } from '../types'
 
-const props = defineProps<{ champions: Champion[]; selected: Champion | null }>()
-const emit = defineEmits<{ select: [c: Champion] }>()
+const props = defineProps<{ champions: Champion[]; selected: Champion | null; open: boolean }>()
+const emit = defineEmits<{ select: [c: Champion]; close: [] }>()
 const q = ref('')
+const input = ref<HTMLInputElement | null>(null)
 const sortBy = ref<'name' | 'mastery'>((localStorage.getItem('ezlol.sort') as 'name' | 'mastery') || 'name')
 const mastery = ref<Record<string, Mastery>>({})
 onMounted(async () => {
@@ -16,6 +18,15 @@ onMounted(async () => {
     /* client not running */
   }
 })
+watch(
+  () => props.open,
+  async (o) => {
+    if (!o) return
+    q.value = ''
+    await nextTick()
+    input.value?.focus()
+  },
+)
 function setSort(v: 'name' | 'mastery') {
   sortBy.value = v
   localStorage.setItem('ezlol.sort', v)
@@ -35,10 +46,9 @@ function onEnter() {
 </script>
 
 <template>
-  <Widget id="picker" :w="3">
-    <h2>Champion</h2>
+  <div v-show="open" class="picker" role="dialog" aria-label="Pick a champion">
     <div class="row">
-      <input v-model="q" placeholder="Search champion…" @keydown.enter="onEnter" style="flex: 1; width: auto" />
+      <input ref="input" v-model="q" placeholder="Search champion…" @keydown.enter="onEnter" @keydown.esc="emit('close')" style="flex: 1; width: auto" />
       <button class="sm" :class="{ active: sortBy === 'name' }" @click="setSort('name')" title="Sort by name">A–Z</button>
       <button class="sm" :class="{ active: sortBy === 'mastery' }" @click="setSort('mastery')" title="Sort by your mastery">M</button>
     </div>
@@ -47,13 +57,17 @@ function onEnter() {
         <img :src="c.image" :alt="c.name" loading="lazy" />
         <span v-if="m(c)?.championLevel" class="m">{{ m(c).championLevel }}</span>
       </div>
+      <div v-if="!filtered.length" class="muted" style="grid-column: 1 / -1">No champion matches “{{ q }}”.</div>
     </div>
-  </Widget>
+  </div>
 </template>
 
 <style scoped>
+.picker { position: absolute; top: calc(100% + 6px); left: 10px; z-index: 300; width: min(600px, calc(100vw - 40px)); max-height: min(70vh, 680px); display: flex; flex-direction: column; gap: 10px; padding: 10px;
+  background: var(--panel-2); border: 1px solid var(--gold-deep); border-radius: var(--radius-sm); box-shadow: var(--shadow-panel); }
 .row { flex-wrap: nowrap; }
 button.sm { padding: 6px 8px; font-size: 10px; }
+.champ-grid { grid-template-columns: repeat(9, 1fr); overflow-y: auto; min-height: 0; padding-right: 4px; }
 .cell { position: relative; cursor: pointer; }
 .cell img { width: 100%; aspect-ratio: 1; border: 1px solid var(--gold-deep); display: block; filter: saturate(.85); transition: all .12s; }
 .cell:hover img { border-color: var(--gold); filter: saturate(1.1); transform: scale(1.06); }
