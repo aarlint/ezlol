@@ -25,8 +25,10 @@
 
 - [x] Champion card is a fixed bar above the grid (ChampionBar + shared build store); screen change resets forced mode/lane; layout store keys v3; README screenshots retaken
 
+- [x] Champion picker is a dropdown card on the champion bar (portrait/name opens it; Esc / outside click closes; Enter picks first match)
+
 ## Next
-- [ ] Release v1.0.8 when asked (bump electron/package.json + web/package.json, tag v1.0.8)
+- [x] v1.0.8 released 2026-09-07 (all jobs green)
 - [x] Trade buttons verified in ARAM champ select (AVAILABLE + ids)
 - [ ] Verify Auto runes + reroll hint in next champ select
 - [ ] Verify post-game share badges at next game end
