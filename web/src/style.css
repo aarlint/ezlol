@@ -520,6 +520,8 @@ input:focus, select:focus { border-color: var(--gold); box-shadow: var(--shadow-
 .app:has(.layout.game), .app:has(.layout.select) { max-width: none; padding: 10px 12px; gap: 10px; }
 .topbar { -webkit-app-region: drag; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 14px; border-bottom: 1px solid var(--gold-deep); position: relative; z-index: 10; /* above the champion bar so its dropdowns (theme menu) overlay it */ }
 .topbar button, .topbar .toggle, .topbar .pill, .topbar label, .topbar .tm { -webkit-app-region: no-drag; position: relative; z-index: 1; }
+/* Every header control shares one height: pills, switches, Save / Reset, theme menu, gear. */
+.topbar button { min-height: 40px; padding-top: 0; padding-bottom: 0; box-sizing: border-box; }
 /* Electron: the header is the window drag handle. Left gutter keeps the brand clear of the
    macOS traffic lights; every control opts out so it stays fully clickable. */
 body.electron .topbar { -webkit-app-region: drag; padding-left: 84px; min-height: 48px; }
