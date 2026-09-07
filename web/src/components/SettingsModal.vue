@@ -84,6 +84,7 @@ function clearKey() {
 async function check() {
   busy.value = true
   try {
+    window.ezlol?.checkUpdate?.()
     upd.value = await api.checkUpdate()
   } catch (e) {
     flash(errText(e), 'err')

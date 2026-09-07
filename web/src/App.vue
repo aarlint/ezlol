@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { DASH_KEY, DashboardGrid } from './dashboard'
 import { api, isElectron, subscribe } from './api'
 import * as sound from './sound'
 import type { Champion, LogEntry, Status } from './types'
@@ -17,6 +18,7 @@ import type { ThemeOption } from './components/ThemeMenu.vue'
 import { toast } from './toast'
 import type { UpdateInfo } from './types'
 
+const params = new URLSearchParams(location.search)
 const status = ref<Status | null>(null)
 const logs = ref<LogEntry[]>([])
 const champions = ref<Champion[]>([])
@@ -32,7 +34,11 @@ const THEMES: ThemeOption[] = [
   { id: 'terminal', label: 'Terminal', swatch: ['#000000', '#1f3a1f', '#39ff14'] },
   { id: 'sketch', label: 'Sketch', swatch: ['#f6f1e7', '#2b2b2b', '#ffe066'] },
 ]
-const theme = ref<string>(THEMES.some((t) => t.id === localStorage.getItem('ezlol.theme')) ? (localStorage.getItem('ezlol.theme') as string) : 'hextech')
+const themeParam = params.get('theme')
+const theme = ref<string>(
+  THEMES.some((t) => t.id === themeParam) ? (themeParam as string) : THEMES.some((t) => t.id === localStorage.getItem('ezlol.theme')) ? (localStorage.getItem('ezlol.theme') as string) : 'hextech',
+)
+if (params.get('open') === 'settings') setTimeout(() => (showSettings.value = true), 800)
 watch(
   theme,
   (t) => {
@@ -42,7 +48,7 @@ watch(
   { immediate: true },
 )
 const upd = ref<UpdateInfo | null>(null)
-const electronUpdate = ref<{ status: string; version?: string; error?: string } | null>(null)
+const electronUpdate = ref<{ status: string; version?: string; error?: string; progress?: number } | null>(null)
 const installUpdate = () => window.ezlol?.installUpdate?.()
 let announcedUpdate = ''
 async function checkUpdateSoon() {
@@ -60,14 +66,13 @@ async function checkUpdateSoon() {
 }
 watch(electronUpdate, (st) => {
   if (!st) return
-  if (st.status === 'downloaded') toast({ key: 'update', kind: 'success', sticky: true, title: `Update ${st.version} ready`, body: 'Restart to install.', actions: [{ label: 'Restart to update', primary: true, run: installUpdate }] })
-  else if (st.status === 'downloading') toast({ key: 'update', kind: 'info', sticky: true, title: `Downloading ${st.version}…` })
-  else if (st.status === 'error') toast({ key: 'update-err', kind: 'warn', title: 'Auto-update failed', body: st.error })
+  if (st.status === 'downloaded') toast({ key: 'update', kind: 'success', sticky: true, title: `ezlol ${st.version} is ready`, body: 'Downloaded and verified. Installing swaps the app and relaunches it.', actions: [{ label: 'Install & restart', primary: true, run: installUpdate }] })
+  else if (st.status === 'downloading') toast({ key: 'update', kind: 'info', sticky: true, title: `Downloading ${st.version}…`, body: st.progress ? `${Math.round(st.progress * 100)}%` : undefined })
+  else if (st.status === 'error') toast({ key: 'update', kind: 'warn', title: 'Auto-update failed', body: `${st.error ?? ''} — use Download instead.`, actions: upd.value?.url ? [{ label: 'Download', run: () => window.open(upd.value!.url, '_blank') }] : undefined })
 })
 const electron = isElectron()
 // Page mode drives the layout: idle (lobby, queue, post-game) shows the side
 // column; select and game modes drop it and spread the panels out.
-const params = new URLSearchParams(location.search)
 const forcedMode = params.get('mode') // dev: ?mode=game|select|idle
 const mode = computed(() => {
   if (forcedMode === 'game' || forcedMode === 'select' || forcedMode === 'idle') return forcedMode
@@ -121,65 +126,34 @@ onMounted(async () => {
     error.value = (e as Error).message
   }
   unsub = subscribe(onStatus, onLog)
-  setTimeout(checkUpdateSoon, 4000)
-  setInterval(checkUpdateSoon, 6 * 3600 * 1000)
+  if (!params.get('quiet')) {
+    setTimeout(checkUpdateSoon, 4000)
+    setInterval(checkUpdateSoon, 6 * 3600 * 1000)
+  }
   window.ezlol?.onUpdate?.((st) => (electronUpdate.value = st))
   sound.notify('', '') // triggers the permission prompt once
 })
 onUnmounted(() => unsub?.())
 
-// Masonry packing: the dashboard grid uses tiny implicit rows and every panel
-// spans as many as its rendered height needs, so boxes of different heights
-// pack tightly instead of leaving row-height gaps.
-const ROW = 8
-const GAP = 10
+// Widget dashboard: one grid per screen mode; widgets register on mount.
+const dash = new DashboardGrid(() => mode.value)
+provide(DASH_KEY, dash)
 const mainEl = ref<HTMLElement | null>(null)
-let ro: ResizeObserver | null = null
-let mo: MutationObserver | null = null
-function pack(el: Element) {
-  const p = el as HTMLElement
-  // Measure content height with the span removed so growth and shrink both register.
-  p.style.gridRowEnd = 'span 1'
-  const h = p.scrollHeight
-  p.style.gridRowEnd = `span ${Math.max(1, Math.ceil((h + GAP) / (ROW + GAP)))}`
+const editing = ref(false)
+const layoutVersion = ref(0)
+function attachGrid() {
+  if (mainEl.value) dash.attach(mainEl.value)
 }
-let packing = false
-let lastZoom = 1
-function packAll() {
-  if (!mainEl.value || packing) return
-  packing = true
-  const m = mainEl.value
-  // Measure unscaled, then fit: if the packed grid is taller than the window,
-  // scale the whole dashboard down so every box stays on screen (no scrolling in game).
-  const z = (m.style as unknown as { zoom: string }).zoom
-  ;(m.style as unknown as { zoom: string }).zoom = '1'
-  for (const child of Array.from(m.children)) pack(child)
-  const avail = window.innerHeight - m.getBoundingClientRect().top - 12
-  const need = m.scrollHeight
-  let zoom = need > avail ? Math.max(0.55, avail / need) : 1
-  zoom = Math.round(zoom * 100) / 100
-  if (Math.abs(zoom - lastZoom) < 0.02 && z) zoom = lastZoom
-  lastZoom = zoom
-  ;(m.style as unknown as { zoom: string }).zoom = String(zoom)
-  packing = false
-}
-window.addEventListener('resize', () => requestAnimationFrame(packAll))
-function observeAll() {
-  if (!mainEl.value || !ro) return
-  ro.disconnect()
-  for (const child of Array.from(mainEl.value.children)) ro.observe(child)
-  packAll()
-}
-onMounted(() => {
-  ro = new ResizeObserver(() => requestAnimationFrame(packAll))
-  mo = new MutationObserver(() => observeAll())
-  if (mainEl.value) mo.observe(mainEl.value, { childList: true })
-  observeAll()
+onMounted(attachGrid)
+watch([mode, layoutVersion], async () => {
+  await nextTick()
+  attachGrid()
 })
-onUnmounted(() => {
-  ro?.disconnect()
-  mo?.disconnect()
-})
+watch(editing, (v) => dash.setEditing(v))
+function resetLayout() {
+  dash.reset()
+  layoutVersion.value++
+}
 watch(soundOn, (v) => sound.setEnabled(v))
 
 function select(c: Champion) {
@@ -203,6 +177,10 @@ async function toggleAuto() {
       <span v-if="status?.patch" class="pill"><i class="dot" />Patch {{ status.patch }}</span>
       <span v-if="status?.queueName" class="pill warn"><i class="dot" />{{ status.queueName }}</span>
       <div class="grow" />
+      <label class="toggle" :class="{ on: editing }" title="Drag and resize the boxes; layout is saved per screen" @click="editing = !editing">
+        <span class="track" /><span>Edit layout</span>
+      </label>
+      <button v-if="editing" title="Forget the saved layout for this screen" @click="resetLayout">Reset</button>
       <label class="toggle" :class="{ on: soundOn }" @click="soundOn = !soundOn">
         <span class="track" /><span>Sound</span>
       </label>
@@ -218,7 +196,7 @@ async function toggleAuto() {
     <SettingsModal v-if="showSettings" @close="showSettings = false" />
 
     <div class="layout" :class="mode">
-      <div ref="mainEl" class="main" :class="mode">
+      <div ref="mainEl" :key="mode + ':' + layoutVersion" class="main grid-stack" :class="[mode, { editing }]">
         <QueuePanel v-if="mode === 'idle'" :status="status" :logs="logs" @select="select" />
         <EndOfGame v-if="mode === 'idle'" />
         <ChampSelect v-if="mode === 'select'" @preview="select" />

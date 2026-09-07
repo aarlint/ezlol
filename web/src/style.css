@@ -85,6 +85,13 @@
   /* misc */
   --pill-bg: #010a13;
   --pill-border: var(--gold-deep);
+  /* augment rarity headers */
+  --rarity-prismatic: #c7f3ff;
+  --rarity-prismatic-bg: rgba(63, 180, 216, 0.22);
+  --rarity-gold: var(--gold-bright);
+  --rarity-gold-bg: rgba(200, 170, 110, 0.22);
+  --rarity-silver: #d8dde3;
+  --rarity-silver-bg: rgba(139, 155, 176, 0.22);
   color-scheme: dark;
 }
 
@@ -437,6 +444,12 @@
   --switch-radius: 155px 10px 125px 10px / 10px 125px 10px 155px;
   --pill-bg: #ffffff;
   --pill-border: #2b2b2b;
+  --rarity-prismatic: #1f6f8b;
+  --rarity-prismatic-bg: rgba(63, 180, 216, 0.18);
+  --rarity-gold: #7a5a00;
+  --rarity-gold-bg: rgba(255, 224, 102, 0.35);
+  --rarity-silver: #444b55;
+  --rarity-silver-bg: rgba(139, 155, 176, 0.25);
 }
 :root[data-theme="sketch"] body { font-size: 15px; }
 :root[data-theme="sketch"] .brand span { -webkit-text-fill-color: var(--accent); color: var(--accent); }
@@ -503,7 +516,7 @@ input::placeholder { color: var(--dim); }
 input:focus, select:focus { border-color: var(--gold); box-shadow: var(--shadow-inset), 0 0 10px var(--gold-glow); }
 
 .app { max-width: none; margin: 0 auto; padding: 10px 12px; display: grid; gap: 10px; height: 100vh; box-sizing: border-box; grid-template-rows: auto 1fr; overflow: hidden; }
-.layout { min-height: 0; overflow: hidden; }
+.layout { min-height: 0; overflow: auto; }
 .app:has(.layout.game), .app:has(.layout.select) { max-width: none; padding: 10px 12px; gap: 10px; }
 .topbar { -webkit-app-region: drag; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 14px; border-bottom: 1px solid var(--gold-deep); position: relative; }
 .topbar button, .topbar .toggle, .topbar .pill, .topbar label, .topbar .tm { -webkit-app-region: no-drag; position: relative; z-index: 1; }
@@ -524,17 +537,23 @@ body.electron .topbar { -webkit-app-region: drag; padding-left: 84px; min-height
 .brand span { -webkit-text-fill-color: var(--hextech-2); color: var(--hextech-2); }
 .grow { flex: 1; }
 .layout { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: start; }
-/* Dashboard: boxes flow into as many columns as fit; wide boxes span two. */
-.layout .main { display: grid; gap: 10px; align-items: start; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); grid-auto-rows: 8px; grid-auto-flow: dense; }
-.layout .main > .panel { align-self: start; overflow: hidden; }
+/* Dashboard: gridstack 12-column grid; each box is a widget the user can move and size in edit mode. */
+.layout .main { min-height: 100%; }
+.grid-stack-item-content.panel { overflow-x: hidden; overflow-y: auto; }
+/* Natural-height wrapper: measured for auto-sizing; stretches to the box so feeds can fill it. */
+.wcontent { display: flex; flex-direction: column; min-height: 100%; }
+.wcontent.measuring { min-height: 0; }
+.wcontent > * { flex: none; }
+.wcontent > .log { flex: 1 1 auto; min-height: 60px; max-height: none; }
+.main.editing .grid-stack-item-content.panel { outline: 1px dashed var(--accent); cursor: move; }
+.main.editing .grid-stack-item-content.panel:hover { box-shadow: var(--shadow-panel), 0 0 0 2px var(--accent-glow); }
+.grid-stack > .grid-stack-item > .ui-resizable-se { background: none; border-right: 3px solid var(--accent); border-bottom: 3px solid var(--accent); width: 14px; height: 14px; right: 8px; bottom: 8px; transform: none; }
+.grid-stack > .grid-stack-item > .ui-resizable-e, .grid-stack > .grid-stack-item > .ui-resizable-s { background: none; }
+.grid-stack-placeholder > .placeholder-content { border: 1px dashed var(--accent); background: var(--accent-soft); }
 .layout .panel { padding: 12px; }
 .layout .panel h2 { margin: -12px -12px 10px; padding: 6px 12px; }
 .topbar { padding-bottom: 8px; }
 .app:has(.layout.idle) { max-width: none; padding: 10px 12px; gap: 10px; }
-.layout.game, .layout.select { grid-template-columns: 1fr; }
-.span2 { grid-column: span 2; }
-.span-all { grid-column: 1 / -1; }
-@media (max-width: 760px) { .span2 { grid-column: span 1; } }
 .panel h2 .toggle, .panel h2 button { text-transform: none; letter-spacing: 0; }
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
 
@@ -652,10 +671,9 @@ code { background: var(--surface-input); border: 1px solid var(--gold-deep); pad
 ::-webkit-scrollbar-thumb:hover { background: var(--gold-dark); }
 
 
-/* Fit-to-screen: tall boxes scroll inside themselves rather than growing the page */
-.log { max-height: 180px; }
-.champ-grid { max-height: 220px; }
-.sets { max-height: 420px; overflow: auto; }
+/* Widgets scroll internally; feeds fill their widget */
+.champ-grid { max-height: none; }
+.sets { max-height: none; }
 
 
 .gear { min-height: 40px; }

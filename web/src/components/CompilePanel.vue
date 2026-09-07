@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Widget from './Widget.vue'
 import { onMounted, onUnmounted, ref } from 'vue'
 import { api } from '../api'
 import type { BuildsStatus } from '../types'
@@ -35,7 +36,7 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
-  <section class="panel">
+  <Widget id="compile" :w="3">
     <h2>Build data</h2>
     <template v-if="st">
       <div class="kv">
@@ -61,5 +62,5 @@ onUnmounted(() => clearInterval(timer))
       <div v-if="st.progress.lastError" class="note">{{ st.progress.lastError }}</div>
     </template>
     <div v-if="err" class="note">{{ err }}</div>
-  </section>
+  </Widget>
 </template>

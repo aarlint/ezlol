@@ -1,7 +1,7 @@
 {
   "name": "ezlol-app",
   "productName": "ezlol",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "League of Legends queue auto-accept and build viewer",
   "private": true,
   "main": "main.js",
@@ -20,7 +20,7 @@
     "appId": "dev.arlint.ezlol",
     "productName": "ezlol",
     "directories": { "output": "dist" },
-    "files": ["main.js", "preload.js", "icon.png"],
+    "files": ["main.js", "preload.js", "updater-mac.js", "icon.png"],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "publish": [{ "provider": "github", "owner": "aarlint", "repo": "ezlol" }],
     "mac": {

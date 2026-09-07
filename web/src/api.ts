@@ -74,8 +74,9 @@ declare global {
     ezlol?: {
       electron: boolean
       platform: string
-      onUpdate?: (fn: (state: { status: string; version?: string; error?: string }) => void) => void
+      onUpdate?: (fn: (state: { status: string; version?: string; error?: string; progress?: number }) => void) => void
       installUpdate?: () => Promise<boolean>
+      checkUpdate?: () => Promise<{ status: string; version?: string; error?: string; progress?: number }>
     }
   }
 }

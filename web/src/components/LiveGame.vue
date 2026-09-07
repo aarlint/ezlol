@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Widget from './Widget.vue'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, estRank, fmtTime } from '../api'
 import * as sound from '../sound'
@@ -211,7 +212,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 <template>
   <template v-if="live?.inGame">
     <!-- Tactical: score, status, hints -->
-    <section class="panel">
+    <Widget id="live-status" :w="3">
       <h2>Live <span class="clock">{{ fmtTime(live.gameTime) }}</span><span class="muted" style="margin-left: 8px">{{ live.gameMode }}</span></h2>
       <div class="score"><span class="ally">{{ teamKills(myTeam) }}</span><span class="vs">vs</span><span class="enemy">{{ teamKills(enemies) }}</span></div>
       <!-- Fixed-height status slot: content swaps without resizing the box -->
@@ -227,10 +228,10 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
       <div v-if="live.hint" class="hintline">Build: {{ live.hint }}</div>
       <div v-if="enemyBack.length" class="down"><span class="muted">Enemy back:</span><span v-for="p in enemyBack" :key="p.name" class="pill"><img :src="p.champion.image" />{{ p.champion.name }} {{ Math.ceil(p.respawnTimer) }}s</span></div>
       <div v-if="downSpells.length" class="down"><span class="muted">Down:</span><span v-for="x in downSpells" :key="x.p.name + x.s.name" class="pill"><img :src="x.s.image" />{{ x.p.champion.name }} {{ x.s.name }} {{ fmtTime(x.left) }}</span></div>
-    </section>
+    </Widget>
 
     <!-- Enemies -->
-    <section class="panel span2 live">
+    <Widget id="live-enemies" :w="6" class="live">
       <h2>Enemies <span class="muted" style="text-transform: none; letter-spacing: 0; margin-left: 8px">click a spell when used · click portrait for cooldowns</span></h2>
         <div v-for="p in enemies" :key="p.name" class="prow" :class="{ dead: p.isDead }">
           <div class="portrait" @click="toggleRow(p)" title="Click: ability cooldowns">
@@ -256,10 +257,10 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
             </span>
           </div>
         </div>
-    </section>
+    </Widget>
 
     <!-- Your team -->
-    <section class="panel span2 live">
+    <Widget id="live-allies" :w="6" class="live">
       <h2>Your team</h2>
         <div v-for="p in myTeam" :key="p.name" class="prow" :class="{ me: p.isMe, dead: p.isDead }">
           <div class="portrait" @click="toggleRow(p)" title="Click: ability cooldowns">
@@ -280,10 +281,10 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
             </span>
           </div>
         </div>
-    </section>
+    </Widget>
 
     <!-- Rift: objectives -->
-    <section v-if="isRift && live.objectives" class="panel">
+    <Widget v-if="isRift && live.objectives" id="live-objectives" :w="3">
       <h2>Objectives</h2>
       <div class="obj-row"><span class="muted">Drakes</span><span class="ally">{{ (live.objectives.allyDragons ?? []).join(', ') || '—' }}</span><span class="enemy">{{ (live.objectives.enemyDragons ?? []).join(', ') || '—' }}</span></div>
       <div class="obj-row"><span class="muted">Grubs</span><span class="ally">{{ live.objectives.allyGrubs }}</span><span class="enemy">{{ live.objectives.enemyGrubs }}</span></div>
@@ -299,10 +300,10 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
           <div class="stat"><b>{{ n.in <= 0 ? 'UP' : fmtTime(n.in) }}</b>{{ fmtTime(n.at) }}</div>
         </div>
       </div>
-    </section>
+    </Widget>
 
     <!-- Rift: lane matchup -->
-    <section v-if="isRift && opponent" class="panel">
+    <Widget v-if="isRift && opponent" id="live-matchup" :w="3">
       <h2>Matchup <span class="muted" style="margin-left: 8px; text-transform: none; letter-spacing: 0">{{ POS[opponent.position] }} · {{ opponent.champion.name }}</span></h2>
       <div class="prow enemy" :class="{ dead: opponent.isDead }" style="grid-template-columns: 44px 1fr">
         <div class="portrait"><img :src="opponent.champion.image" /><span class="lvl">{{ opponent.level }}</span><span v-if="opponent.isDead" class="respawn">{{ Math.ceil(opponent.respawnTimer) }}</span></div>
@@ -320,10 +321,10 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
         </span>
       </div>
       <div class="hintline">Spells: <span v-for="(s, i) in opponent.spells ?? []" :key="i"><img :src="s.image" class="buy-img" /> {{ s.name }} </span></div>
-    </section>
+    </Widget>
 
     <!-- You -->
-    <section v-if="live.me" class="panel">
+    <Widget v-if="live.me" id="live-you" :w="3">
       <h2>You</h2>
       <div class="kv">
         <span>Gold</span><b>{{ Math.round(live.me.currentGold) }}</b>
@@ -337,10 +338,10 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
         <span>Crit / AS</span><b>{{ Math.round(Number(live.me.championStats?.critChance ?? 0) * 100) }}% / {{ Number(live.me.championStats?.attackSpeed ?? 0).toFixed(2) }}</b>
         <span>Lifesteal / Omni</span><b>{{ Math.round(Number(live.me.championStats?.lifeSteal ?? 0) * 100) }}% / {{ Math.round(Number(live.me.championStats?.omnivamp ?? 0) * 100) }}%</b>
       </div>
-    </section>
+    </Widget>
 
     <!-- Shopping -->
-    <section class="panel">
+    <Widget id="live-shopping" :w="3">
       <h2>Shopping</h2>
       <div class="log" v-autoscroll>
         <div v-for="(b, i) in buys" :key="i" class="row" :class="{ error: b.enemy }">
@@ -349,10 +350,10 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
         </div>
         <div v-if="!buys.length" class="muted">No purchases seen yet.</div>
       </div>
-    </section>
+    </Widget>
 
     <!-- Kill feed -->
-    <section class="panel">
+    <Widget id="live-killfeed" :w="3">
       <h2>Kill feed</h2>
       <div class="log" v-autoscroll>
         <div v-for="e in events" :key="e.EventID" class="row" :class="{ accept: e.EventName === 'Ace' || e.EventName === 'Multikill' || e.KillerName === myself?.name, error: e.VictimName === myself?.name }">
@@ -360,7 +361,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
         </div>
         <div v-if="!events.length" class="muted">Quiet so far.</div>
       </div>
-    </section>
+    </Widget>
   </template>
 </template>
 

@@ -10,6 +10,8 @@ try {
 } catch {
   autoUpdater = null
 }
+const { MacUpdater } = require('./updater-mac')
+let macUpdater = null
 
 // Keep Chromium's profile out of the Go backend's data directory.
 app.setPath('userData', path.join(app.getPath('appData'), 'ezlol-app'))
@@ -67,6 +69,16 @@ async function startBackend() {
   throw new Error('backend did not come up')
 }
 
+function hideAllWindows() {
+  for (const w of BrowserWindow.getAllWindows()) {
+    try {
+      w.hide()
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -111,23 +123,106 @@ ipcMain.handle('notify', (_e, title, body) => {
 
 // In-place updates: Windows (NSIS) installs on quit; macOS needs a signed app for
 // electron-updater, so unsigned mac builds fall back to the download banner in the UI.
+async function updatesEnabled() {
+  return new Promise((resolve) => {
+    const req = http.get(`${URL}/api/settings`, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (d) => (body += d))
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body).updateCheck !== false)
+        } catch {
+          resolve(true)
+        }
+      })
+    })
+    req.on('error', () => resolve(true))
+    req.setTimeout(2000, () => {
+      req.destroy()
+      resolve(true)
+    })
+  })
+}
+
 function setupUpdates() {
-  if (!autoUpdater || !app.isPackaged) return
+  if (!app.isPackaged) return
+  const send = (payload) => win && win.webContents.send('update-state', payload)
+  // Signed + notarized mac builds (CI with CSC_LINK) can use electron-updater like
+  // Windows; unsigned ones use our own download/verify/swap updater.
+  const signed = process.platform === 'darwin' && fs.existsSync(path.join(process.resourcesPath, '..', '_CodeSignature', 'CodeResources'))
+  if (process.platform === 'darwin' && !signed) {
+    macUpdater = new MacUpdater(send)
+    const check = async () => {
+      if (await updatesEnabled()) macUpdater.check()
+    }
+    setTimeout(check, 15000)
+    setInterval(check, 6 * 60 * 60 * 1000)
+    return
+  }
+  if (!autoUpdater) return
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
-  const send = (payload) => win && win.webContents.send('update-state', payload)
   autoUpdater.on('checking-for-update', () => send({ status: 'checking' }))
   autoUpdater.on('update-available', (i) => send({ status: 'downloading', version: i.version }))
   autoUpdater.on('update-not-available', () => send({ status: 'none' }))
   autoUpdater.on('update-downloaded', (i) => send({ status: 'downloaded', version: i.version }))
   autoUpdater.on('error', (e) => send({ status: 'error', error: String(e && e.message ? e.message : e) }))
-  const check = () => autoUpdater.checkForUpdates().catch(() => {})
+  const check = async () => {
+    if (await updatesEnabled()) autoUpdater.checkForUpdates().catch(() => {})
+  }
   setTimeout(check, 15000)
   setInterval(check, 6 * 60 * 60 * 1000)
 }
-ipcMain.handle('install-update', () => {
+ipcMain.handle('install-update', async () => {
+  if (macUpdater) {
+    try {
+      await macUpdater.install(async () => {
+        app.isQuitting = true
+        // Make sure the old backend is gone before the new instance starts, or the
+        // new app would attach to a backend that is about to die.
+        if (backend) {
+          const b = backend
+          await new Promise((resolve) => {
+            const t = setTimeout(() => {
+              try {
+                b.kill('SIGKILL')
+              } catch {
+                /* already gone */
+              }
+              resolve()
+            }, 3000)
+            b.once('exit', () => {
+              clearTimeout(t)
+              resolve()
+            })
+            b.kill('SIGTERM')
+          })
+        }
+        hideAllWindows()
+      })
+    } catch (err) {
+      if (win) win.webContents.send('update-state', { status: 'error', error: String(err && err.message ? err.message : err) })
+      return false
+    }
+    return true
+  }
   if (autoUpdater) autoUpdater.quitAndInstall()
   return true
+})
+ipcMain.handle('check-update', async () => {
+  if (macUpdater) {
+    await macUpdater.check()
+    return macUpdater.state
+  }
+  if (autoUpdater && app.isPackaged) {
+    try {
+      await autoUpdater.checkForUpdates()
+    } catch (err) {
+      return { status: 'error', error: String(err && err.message ? err.message : err) }
+    }
+  }
+  return { status: 'checking' }
 })
 
 app.whenReady().then(async () => {
