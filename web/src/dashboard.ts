@@ -1,5 +1,5 @@
 import { GridStack, type GridStackWidget } from 'gridstack'
-import type { InjectionKey } from 'vue'
+import { reactive, type InjectionKey } from 'vue'
 
 export interface WidgetOpts {
   w?: number
@@ -9,6 +9,57 @@ export interface WidgetOpts {
 export interface Dashboard {
   add(id: string, el: HTMLElement, opts: WidgetOpts): void
   remove(el: HTMLElement): void
+  /** ids of widgets currently mounted (reactive) */
+  mounted: Set<string>
+}
+
+/** Every box a screen can show, so edit mode can offer a ghost slot for the ones not on screen yet. */
+export interface WidgetSpec {
+  id: string
+  title: string
+  w: number
+  h: number
+  when?: string
+}
+const BUILD_WIDGETS: WidgetSpec[] = [
+  { id: 'build-head', title: 'Champion', w: 3, h: 7 },
+  { id: 'items', title: 'Items', w: 3, h: 12 },
+  { id: 'boots', title: 'Boots & late items', w: 3, h: 12 },
+  { id: 'runes', title: 'Runes', w: 3, h: 10 },
+  { id: 'spells', title: 'Spells & skills', w: 3, h: 10 },
+  { id: 'aug-prismatic', title: 'Prismatic augments', w: 3, h: 10, when: 'ARAM Mayhem / Arena' },
+  { id: 'aug-gold', title: 'Gold augments', w: 3, h: 10, when: 'ARAM Mayhem / Arena' },
+  { id: 'aug-silver', title: 'Silver augments', w: 3, h: 10, when: 'ARAM Mayhem / Arena' },
+  { id: 'prismatic', title: 'Prismatic items', w: 3, h: 10, when: 'Arena' },
+  { id: 'synergies', title: 'Best partners', w: 3, h: 10, when: 'Arena' },
+]
+export const CATALOG: Record<string, WidgetSpec[]> = {
+  idle: [
+    { id: 'queue', title: 'Queue watcher', w: 3, h: 10 },
+    { id: 'postgame', title: 'Post-game', w: 6, h: 12, when: 'after a game' },
+    ...BUILD_WIDGETS,
+    { id: 'picker', title: 'Champion picker', w: 3, h: 9 },
+    { id: 'compile', title: 'Build data', w: 3, h: 6 },
+  ],
+  select: [
+    { id: 'cs-team', title: 'Champ select · your team', w: 4, h: 9 },
+    { id: 'cs-enemies', title: 'Champ select · enemies', w: 4, h: 7, when: 'once enemy picks are visible' },
+    { id: 'cs-bench', title: 'Bench', w: 4, h: 8, when: 'ARAM' },
+    ...BUILD_WIDGETS,
+  ],
+  game: [
+    { id: 'live-status', title: 'Live', w: 3, h: 6 },
+    { id: 'live-enemies', title: 'Enemies', w: 6, h: 10, when: 'Rift / ARAM' },
+    { id: 'live-allies', title: 'Your team', w: 6, h: 10, when: 'Rift / ARAM' },
+    { id: 'arena-mine', title: 'Your team (Arena)', w: 6, h: 7, when: 'Arena' },
+    { id: 'arena-teams', title: 'Enemy teams (Arena)', w: 6, h: 24, when: 'Arena' },
+    { id: 'live-you', title: 'You', w: 3, h: 8 },
+    { id: 'live-objectives', title: 'Objectives', w: 3, h: 9, when: 'Rift' },
+    { id: 'live-matchup', title: 'Matchup', w: 3, h: 8, when: 'Rift' },
+    { id: 'live-shopping', title: 'Shopping', w: 3, h: 8 },
+    { id: 'live-killfeed', title: 'Kill feed', w: 3, h: 8 },
+    ...BUILD_WIDGETS,
+  ],
 }
 
 export const DASH_KEY: InjectionKey<Dashboard> = Symbol('dashboard')
@@ -88,13 +139,14 @@ export class DashboardGrid implements Dashboard {
   // Widgets without a saved position keep tracking their content height (data and
   // fonts arrive after mount) until the user has arranged the screen.
   private auto = new Map<HTMLElement, ResizeObserver>()
+  readonly mounted = reactive(new Set<string>())
 
   constructor(private mode: () => string) {}
 
   attach(container: HTMLElement) {
     this.detach()
     this.grid = GridStack.init(
-      { column: COLUMNS, cellHeight: CELL, margin: MARGIN, float: false, animate: false, staticGrid: !this.editing, minRow: 1, resizable: { handles: 'se,e,s' } },
+      { column: COLUMNS, cellHeight: CELL, margin: MARGIN, float: true, animate: false, staticGrid: !this.editing, minRow: 1, resizable: { handles: 'se,e,s' } },
       container,
     )
     const g = this.grid
@@ -126,6 +178,7 @@ export class DashboardGrid implements Dashboard {
   }
 
   add(id: string, el: HTMLElement, opts: WidgetOpts) {
+    if (!el.classList.contains('ghost')) this.mounted.add(id)
     if (!this.grid) {
       this.pending.push({ id, el, opts })
       return
@@ -134,6 +187,8 @@ export class DashboardGrid implements Dashboard {
   }
 
   remove(el: HTMLElement) {
+    const id = el.getAttribute('gs-id')
+    if (id && !el.classList.contains('ghost')) this.mounted.delete(id)
     this.auto.get(el)?.disconnect()
     this.auto.delete(el)
     this.pending = this.pending.filter((p) => p.el !== el)
@@ -157,6 +212,10 @@ export class DashboardGrid implements Dashboard {
       spec.autoPosition = true
     }
     this.grid.makeWidget(el, spec)
+    if (el.classList.contains('ghost')) {
+      if (this.editing) this.persist()
+      return
+    }
     if (!saved) {
       this.track(el, MAXH[id] ?? 40)
       this.scheduleRelayout()
@@ -175,7 +234,7 @@ export class DashboardGrid implements Dashboard {
     if (!g || this.editing) return
     const saved = this.layouts[this.mode()] ?? {}
     type Node = { el?: HTMLElement; id?: string; w?: number; h?: number }
-    const nodes = (g.engine.nodes as Node[]).filter((n) => n.el && n.id && !saved[String(n.id)])
+    const nodes = (g.engine.nodes as Node[]).filter((n) => n.el && n.id && !saved[String(n.id)] && !n.el.classList.contains('ghost'))
     const rank = (id: string) => {
       const i = ORDER.indexOf(id)
       return i < 0 ? ORDER.length : i

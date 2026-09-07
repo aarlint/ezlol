@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
-import { DASH_KEY, DashboardGrid } from './dashboard'
+import { CATALOG, DASH_KEY, DashboardGrid } from './dashboard'
+import GhostWidget from './components/GhostWidget.vue'
 import { api, isElectron, subscribe } from './api'
 import * as sound from './sound'
 import type { Champion, LogEntry, Status } from './types'
@@ -140,6 +141,8 @@ const dash = new DashboardGrid(() => mode.value)
 provide(DASH_KEY, dash)
 const mainEl = ref<HTMLElement | null>(null)
 const editing = ref(false)
+// Ghost slots: every catalogued box for this screen that is not mounted right now.
+const ghosts = computed(() => (editing.value ? CATALOG[mode.value].filter((w) => !dash.mounted.has(w.id)) : []))
 const layoutVersion = ref(0)
 function attachGrid() {
   if (mainEl.value) dash.attach(mainEl.value)
@@ -205,6 +208,7 @@ async function toggleAuto() {
         <BuildPanel :champion="selected" :status="status" :compact="mode === 'game'" v-model:follow="followPick" />
         <ChampionPicker v-if="mode === 'idle'" :champions="champions" :selected="selected" @select="select" />
         <CompilePanel v-if="mode === 'idle'" />
+        <GhostWidget v-for="g in ghosts" :key="'ghost-' + g.id" :spec="g" />
       </div>
     </div>
   </div>
