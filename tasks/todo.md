@@ -19,6 +19,8 @@
 ## Verified live (2026-09-05, ARAM Mayhem)
 - auto-accept (2 pops, ~100 ms), live scoreboard, ARAM runes, rune apply, post-game block, session tally, shopping feed, focus target
 
+- [x] Widget dashboard (gridstack, per-screen layouts, edit/reset), themes ×6, toasts, Settings dialog, updates (Win in-place, mac swap updater), Rift mode, screenshots — released v1.0.4–v1.0.6
+
 ## Next
 - [x] Trade buttons verified in ARAM champ select (AVAILABLE + ids)
 - [ ] Verify Auto runes + reroll hint in next champ select

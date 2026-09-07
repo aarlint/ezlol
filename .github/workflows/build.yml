@@ -98,7 +98,12 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           extra=""
-          if [[ "${{ matrix.goos }}" == "darwin" && -n "$CSC_LINK" ]]; then
+          # Secrets that are not configured arrive as empty strings; electron-builder
+          # treats a defined CSC_LINK as "sign with this", so drop the empty ones.
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!v}" ]]; then unset "$v"; fi
+          done
+          if [[ "${{ matrix.goos }}" == "darwin" && -n "${CSC_LINK:-}" ]]; then
             extra="-c.mac.notarize=true"
             unset CSC_IDENTITY_AUTO_DISCOVERY
           fi
