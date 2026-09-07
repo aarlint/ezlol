@@ -154,9 +154,23 @@ watch([mode, layoutVersion], async () => {
 })
 watch(editing, (v) => dash.setEditing(v))
 function resetLayout() {
+  const hadPreset = dash.hasPreset()
   dash.reset()
   layoutVersion.value++
+  toast({ key: 'layout', kind: 'info', title: hadPreset ? 'Layout restored' : 'Layout reset', body: hadPreset ? 'Back to your saved arrangement for this screen.' : 'Back to the built-in arrangement (no saved layout for this screen).', ttl: 4000 })
 }
+const hasPreset = ref(false)
+function saveLayout() {
+  dash.savePreset()
+  hasPreset.value = true
+  toast({ key: 'layout', kind: 'success', title: 'Layout saved', body: 'Reset now returns to this arrangement on this screen.', ttl: 4000 })
+}
+function forgetLayout() {
+  dash.clearPreset()
+  hasPreset.value = false
+  toast({ key: 'layout', kind: 'info', title: 'Saved layout forgotten', body: 'Reset will use the built-in arrangement again.', ttl: 4000 })
+}
+watch([editing, mode], () => (hasPreset.value = dash.hasPreset()))
 watch(soundOn, (v) => sound.setEnabled(v))
 
 function select(c: Champion) {
@@ -183,7 +197,9 @@ async function toggleAuto() {
       <label class="toggle" :class="{ on: editing }" title="Drag and resize the boxes; layout is saved per screen" @click="editing = !editing">
         <span class="track" /><span>Edit layout</span>
       </label>
-      <button v-if="editing" title="Forget the saved layout for this screen" @click="resetLayout">Reset</button>
+      <button v-if="editing" class="primary" title="Remember this arrangement for this screen" @click="saveLayout">Save layout</button>
+      <button v-if="editing" :title="hasPreset ? 'Back to your saved arrangement' : 'Back to the built-in arrangement'" @click="resetLayout">Reset</button>
+      <button v-if="editing && hasPreset" class="danger" title="Forget the saved arrangement for this screen" @click="forgetLayout">Forget saved</button>
       <label class="toggle" :class="{ on: soundOn }" @click="soundOn = !soundOn">
         <span class="track" /><span>Sound</span>
       </label>

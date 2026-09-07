@@ -86,6 +86,7 @@ const W: Record<string, number> = {
 const CELL = 40
 const MARGIN = 6
 const STORE = 'ezlol.layout.v2'
+const PRESET = 'ezlol.layout.preset.v1' // user-saved arrangements, restored by Reset
 
 type Pos = { x: number; y: number; w: number; h: number }
 type Layouts = Record<string, Record<string, Pos>>
@@ -110,20 +111,22 @@ function rowsFor(contentHeight: number): number {
   return Math.min(40, Math.max(2, Math.ceil((contentHeight + 2 * MARGIN + 2) / CELL)))
 }
 
-function loadLayouts(): Layouts {
+function loadJSON(key: string): Layouts {
   try {
-    return JSON.parse(localStorage.getItem(STORE) ?? '{}')
+    return JSON.parse(localStorage.getItem(key) ?? '{}')
   } catch {
     return {}
   }
 }
-function saveLayouts(l: Layouts) {
+function saveJSON(key: string, l: Layouts) {
   try {
-    localStorage.setItem(STORE, JSON.stringify(l))
+    localStorage.setItem(key, JSON.stringify(l))
   } catch {
     /* ignore */
   }
 }
+const loadLayouts = () => loadJSON(STORE)
+const saveLayouts = (l: Layouts) => saveJSON(STORE, l)
 
 /**
  * One grid per screen mode (idle / select / game). Widgets register themselves
@@ -135,6 +138,7 @@ export class DashboardGrid implements Dashboard {
   private grid: GridStack | null = null
   private pending: { id: string; el: HTMLElement; opts: WidgetOpts }[] = []
   private layouts = loadLayouts()
+  private presets = loadJSON(PRESET)
   private editing = false
   // Widgets without a saved position keep tracking their content height (data and
   // fonts arrive after mount) until the user has arranged the screen.
@@ -143,7 +147,10 @@ export class DashboardGrid implements Dashboard {
 
   constructor(private mode: () => string) {}
 
+  private reloading = false
+
   attach(container: HTMLElement) {
+    this.reloading = true
     this.detach()
     this.grid = GridStack.init(
       { column: COLUMNS, cellHeight: CELL, margin: MARGIN, float: true, animate: false, staticGrid: !this.editing, minRow: 1, resizable: { handles: 'se,e,s' } },
@@ -154,13 +161,36 @@ export class DashboardGrid implements Dashboard {
     g.on('change', () => {
       if (this.editing) this.persist()
     })
-    for (const p of this.pending.splice(0)) this.place(p.id, p.el, p.opts)
+    // Place everything: widgets queued while there was no grid, plus any item the
+    // new container already held (a remount mounts children before this runs).
+    const queued = this.pending.splice(0)
+    const seen = new Set<HTMLElement>()
+    for (const p of queued) {
+      seen.add(p.el)
+      this.place(p.id, p.el, p.opts)
+    }
+    for (const child of Array.from(container.querySelectorAll<HTMLElement>(':scope > .grid-stack-item'))) {
+      if (seen.has(child)) continue
+      const id = child.getAttribute('gs-id')
+      if (!id) continue
+      let opts: WidgetOpts = {}
+      try {
+        opts = JSON.parse(child.dataset.gsOpts ?? '{}')
+      } catch {
+        /* ignore */
+      }
+      this.place(id, child, opts)
+    }
+    this.reloading = false
   }
 
   detach() {
     for (const ro of this.auto.values()) ro.disconnect()
     this.auto.clear()
     if (this.grid) {
+      // Unhook first: destroy() fires change events that would persist the
+      // outgoing grid's positions over a layout we just restored.
+      this.grid.offAll()
       this.grid.destroy(false)
       this.grid = null
     }
@@ -171,15 +201,47 @@ export class DashboardGrid implements Dashboard {
     this.grid?.setStatic(!on)
   }
 
-  /** Forget the saved layout for the current mode; caller remounts the widgets. */
+  /** Snapshot the current arrangement as this screen's saved layout. */
+  savePreset() {
+    this.persist(true)
+    const cur = this.layouts[this.mode()]
+    if (!cur) return
+    this.presets[this.mode()] = JSON.parse(JSON.stringify(cur))
+    saveJSON(PRESET, this.presets)
+  }
+
+  hasPreset(): boolean {
+    return !!this.presets[this.mode()]
+  }
+
+  /** Drop the saved layout for this screen (Reset then falls back to the built-in default). */
+  clearPreset() {
+    delete this.presets[this.mode()]
+    saveJSON(PRESET, this.presets)
+  }
+
+  /** Restore this screen's saved layout, or the built-in default if none was saved. Caller remounts. */
   reset() {
-    delete this.layouts[this.mode()]
+    const p = this.presets[this.mode()]
+    if (p) this.layouts[this.mode()] = JSON.parse(JSON.stringify(p))
+    else delete this.layouts[this.mode()]
     saveLayouts(this.layouts)
   }
 
   add(id: string, el: HTMLElement, opts: WidgetOpts) {
-    if (!el.classList.contains('ghost')) this.mounted.add(id)
-    if (!this.grid) {
+    if (el.classList.contains('ghost')) {
+      // Ghosts live under their own id in the grid so they never collide with the
+      // real box (gridstack would rename a duplicate id to "<id>_1"); persist()
+      // maps them back to the real id.
+      el.setAttribute('gs-id', 'ghost:' + id)
+      id = 'ghost:' + id
+    } else {
+      this.mounted.add(id)
+    }
+    el.dataset.gsOpts = JSON.stringify(opts)
+    // No grid yet, or the grid belongs to a container being replaced (remount):
+    // queue until attach() runs on the new container.
+    if (!this.grid || !this.grid.el.contains(el)) {
       this.pending.push({ id, el, opts })
       return
     }
@@ -200,15 +262,16 @@ export class DashboardGrid implements Dashboard {
     // GridStack.init adopts any .grid-stack-item already in the container as a 1x1
     // node; drop that node so makeWidget can apply our real size and position.
     if ((el as HTMLElement & { gridstackNode?: unknown }).gridstackNode) this.grid.removeWidget(el, false, false)
-    const saved = this.layouts[this.mode()]?.[id]
-    const w = Math.min(COLUMNS, Math.max(2, saved?.w ?? W[id] ?? opts.w ?? 3))
+    const realID = id.startsWith('ghost:') ? id.slice(6) : id
+    const saved = this.layouts[this.mode()]?.[realID]
+    const w = Math.min(COLUMNS, Math.max(2, saved?.w ?? W[realID] ?? opts.w ?? 3))
     const spec: GridStackWidget = { id, w }
     if (saved) {
       spec.x = saved.x
       spec.y = saved.y
       spec.h = saved.h
     } else {
-      spec.h = Math.min(MAXH[id] ?? 40, opts.h ?? this.measureRows(el, w))
+      spec.h = Math.min(MAXH[realID] ?? 40, opts.h ?? this.measureRows(el, w))
       spec.autoPosition = true
     }
     this.grid.makeWidget(el, spec)
@@ -217,7 +280,7 @@ export class DashboardGrid implements Dashboard {
       return
     }
     if (!saved) {
-      this.track(el, MAXH[id] ?? 40)
+      this.track(el, MAXH[realID] ?? 40)
       this.scheduleRelayout()
     }
   }
@@ -241,6 +304,7 @@ export class DashboardGrid implements Dashboard {
     }
     const mountIndex = new Map(nodes.map((n, i) => [n, i]))
     nodes.sort((a, b) => rank(String(a.id)) - rank(String(b.id)) || (mountIndex.get(a) ?? 0) - (mountIndex.get(b) ?? 0))
+    // (ghosts are excluded above, so ids here are real ids)
     g.batchUpdate()
     for (const n of nodes) g.removeWidget(n.el!, false, false)
     for (const n of nodes) g.makeWidget(n.el!, { id: n.id, w: n.w, h: n.h, autoPosition: true })
@@ -289,11 +353,20 @@ export class DashboardGrid implements Dashboard {
     return rowsFor(h)
   }
 
-  private persist() {
-    if (!this.grid) return
+  private persist(force = false) {
+    if (!this.grid || this.reloading) return
+    if (!this.editing && !force) return
     const nodes = this.grid.save(false) as GridStackWidget[]
     const m: Record<string, Pos> = {}
-    for (const n of nodes) if (n.id) m[String(n.id)] = { x: n.x ?? 0, y: n.y ?? 0, w: n.w ?? 3, h: n.h ?? 4 }
+    for (const n of nodes) {
+      if (!n.id) continue
+      let id = String(n.id)
+      if (id.startsWith('ghost:')) id = id.slice(6)
+      if (id === 'build-loading' || id === 'build-empty') continue // transient placeholders
+      // A real box wins over its ghost if both are somehow present.
+      if (m[id] && !String(n.id).startsWith('ghost:')) m[id] = { x: n.x ?? 0, y: n.y ?? 0, w: n.w ?? 3, h: n.h ?? 4 }
+      else if (!m[id]) m[id] = { x: n.x ?? 0, y: n.y ?? 0, w: n.w ?? 3, h: n.h ?? 4 }
+    }
     this.layouts[this.mode()] = m
     saveLayouts(this.layouts)
   }
