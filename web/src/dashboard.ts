@@ -133,8 +133,8 @@ export const CATALOG: Record<ModeKey, WidgetSpec[]> = {
 const COLUMNS = 12
 const CELL = 40
 const MARGIN = 6
-const STORE = 'ezlol.layout.v3' // v3: champion card left the grid, every default moved
-const PRESET = 'ezlol.layout.preset.v2' // user-saved arrangements, restored by Reset
+const STORE = 'ezlol.layout.v4' // v4: layouts persisted before the remount fix may hold shoved positions
+const PRESET = 'ezlol.layout.preset.v3' // user-saved arrangements, restored by Reset
 
 type Layouts = Record<string, Record<string, Pos>>
 
@@ -200,7 +200,9 @@ export class DashboardGrid implements Dashboard {
     this.reloading = true
     this.detach()
     this.grid = GridStack.init(
-      { column: COLUMNS, cellHeight: CELL, margin: MARGIN, float: true, animate: false, staticGrid: !this.editing, minRow: 1, resizable: { handles: 'se,e,s' } },
+      // auto: false — never adopt the container's children as 1x1 placeholder nodes;
+      // those get shoved around by explicit placement and shove real boxes in turn.
+      { column: COLUMNS, cellHeight: CELL, margin: MARGIN, float: true, animate: false, staticGrid: !this.editing, minRow: 1, auto: false, resizable: { handles: 'se,e,s' } },
       container,
     )
     const g = this.grid
@@ -280,8 +282,8 @@ export class DashboardGrid implements Dashboard {
       // Ghosts live under their own id in the grid so they never collide with the
       // real box (gridstack would rename a duplicate id to "<id>_1"); persist()
       // maps them back to the real id.
-      el.setAttribute('gs-id', 'ghost:' + id)
-      id = 'ghost:' + id
+      if (!id.startsWith('ghost:')) id = 'ghost:' + id
+      el.setAttribute('gs-id', id)
     } else {
       this.mounted.add(id)
     }
@@ -292,6 +294,9 @@ export class DashboardGrid implements Dashboard {
       this.pending.push({ id, el, opts })
       return
     }
+    // attach() already placed everything the container held; placing it again
+    // would collide with itself and shove the box down by its own height.
+    if ((el as HTMLElement & { gridstackNode?: unknown }).gridstackNode) return
     this.place(id, el, opts)
   }
 
