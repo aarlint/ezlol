@@ -104,7 +104,10 @@ Static data (champion, item, rune and spell names and images) comes from Data Dr
 Every box is a widget on a 12-column grid. Flip **Edit layout** in the header to drag boxes around and
 resize them from the corner; the arrangement is saved per screen (lobby, champ select, in game) and
 restored next time. **Reset** forgets the saved layout for the current screen and goes back to the default
-arrangement. Boxes scroll internally when their content is taller than the widget.
+arrangement. Boxes scroll internally when their content is taller than the widget. In edit mode every box the
+screen *can* show, including ones that only appear later (bench in ARAM, enemy picks, Arena teams, augments…),
+is offered as a dashed ghost slot: place it once and the real box drops into that spot when it shows up, so
+nothing shifts mid-game. Boxes keep their exact positions; gaps are allowed.
 
 ## Themes
 
