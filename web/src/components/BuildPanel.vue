@@ -1,173 +1,24 @@
 <script setup lang="ts">
+// Build widgets (items, boots, runes, spells, augments, Arena extras). The
+// champion card that drives them is the fixed bar above the grid (ChampionBar).
 import Widget from './Widget.vue'
-import { ref, watch } from 'vue'
-import { api, fmtPoints, ROLES, ROLE_LABEL, winrate } from '../api'
-import { toast } from '../toast'
-import type { Build, Champion, ChampionInfo, ItemSet, Mastery, PlayRecord, RunePage, Status } from '../types'
+import { computed } from 'vue'
+import { winrate } from '../api'
+import { applyRunes, buildState as s } from '../build'
+import type { Build, ItemSet, Status } from '../types'
 
-const props = defineProps<{ champion: Champion | null; status: Status | null; compact?: boolean }>()
-const expandAugs = ref(false)
-const follow = defineModel<boolean>('follow', { default: true })
-
-const build = ref<Build | null>(null)
-const role = ref('')
-// '' = follow the client's current queue; 'sr' | 'aram' = forced
-const mode = ref<'' | 'sr' | 'aram' | 'arena'>('')
-const loading = ref(false)
-const loadingChamp = ref<Champion | null>(null)
-const err = ref('')
-const me = ref<{ mastery: Mastery | null; record: PlayRecord | null } | null>(null)
-const info = ref<ChampionInfo | null>(null)
-const DMG: Record<string, string> = { kMagic: 'AP', kPhysical: 'AD', kMixed: 'Mixed' }
-
-async function load() {
-  if (!props.champion) return
-  loading.value = true
-  loadingChamp.value = props.champion
-  err.value = ''
-  try {
-    build.value = await api.build(props.champion.key, role.value === 'NONE' ? undefined : role.value || undefined, mode.value || undefined)
-    role.value = build.value.role
-    api.me(props.champion.id, build.value.mode).then((m) => (me.value = m)).catch(() => (me.value = null))
-    api.info(props.champion.key).then((r) => (info.value = r.info ?? null)).catch(() => (info.value = null))
-  } catch (e) {
-    err.value = (e as Error).message
-    toast({ key: 'build', kind: 'error', title: 'Build lookup failed', body: err.value })
-  } finally {
-    loading.value = false
-  }
-}
-
-watch(
-  () => props.champion?.id,
-  () => {
-    role.value = ''
-    load()
-  },
-  { immediate: true },
-)
-watch(
-  () => props.status?.pickedPosition,
-  (p) => {
-    if (follow.value && p && p !== role.value && props.status?.pickedChampion === props.champion?.id) {
-      role.value = p
-      load()
-    }
-  },
-)
-watch(
-  () => props.status?.connected,
-  (c, prev) => {
-    if (c && !prev) load()
-  },
-)
-
-function pickRole(r: string) {
-  role.value = r
-  load()
-}
-function pickMode(m: '' | 'sr' | 'aram' | 'arena') {
-  mode.value = m
-  // Lane only means something on the Rift; drop ARAM's "NONE" and let the server pick.
-  if (m !== 'sr' || role.value === 'NONE') role.value = ''
-  load()
-}
-watch(
-  () => props.status?.queueId,
-  () => {
-    if (!mode.value) load()
-  },
-)
-
-const applying = ref(false)
-const applied = ref('')
-async function applyRunes(p: RunePage) {
-  if (!build.value) return
-  applying.value = true
-  applied.value = ''
-  try {
-    await api.applyRunes(build.value.champion.id, p)
-    toast({ key: 'runes', kind: 'success', title: 'Rune page set', body: `${build.value.champion.name}: ${p.primary.name} + ${p.secondary.name} is now selected in the client.` })
-  } catch (e) {
-    toast({ key: 'runes', kind: 'error', title: 'Rune page failed', body: (e as Error).message })
-  } finally {
-    applying.value = false
-  }
-}
+const props = defineProps<{ status: Status | null; compact?: boolean }>()
+const build = computed(() => s.build)
+const applying = computed(() => s.applying)
 const RARITIES = ['prismatic', 'gold', 'silver'] as const
-const augBy = (b: Build, r: string) => (b.augments ?? []).filter((a) => a.rarity === r).slice(0, props.compact && !expandAugs.value ? 6 : 12)
+const augBy = (b: Build, r: string) => (b.augments ?? []).filter((a) => a.rarity === r).slice(0, props.compact && !s.expandAugs ? 6 : 12)
 const pctf = (x: number) => `${Math.round(x * 100)}%`
 const tierLabel = (t?: number) => (t ? ['', 'S', 'A', 'B', 'C', 'D'][t] ?? String(t) : '')
 const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games) / total)}% pick` : '')
 </script>
 
 <template>
-  <!-- Loading modal: fixed overlay, never affects the grid -->
-  <Teleport to="body">
-      <div v-if="loading && loadingChamp" class="load-backdrop" aria-live="polite" aria-busy="true">
-        <div class="load-card">
-          <img :src="loadingChamp.image" :alt="loadingChamp.name" />
-          <div class="load-name">{{ loadingChamp.name }}</div>
-          <div class="load-sub">Loading build…</div>
-          <div class="spinner" />
-        </div>
-      </div>
-  </Teleport>
-  <template v-if="!champion">
-    <Widget id="build-empty" :w="3" :h="2"><div class="muted">Pick a champion. When you lock in during champ select the build shows here automatically.</div></Widget>
-  </template>
-  <template v-else-if="build">
-    <!-- Header box -->
-    <Widget id="build-head" :w="3" :class="{ compact }">
-      <div class="build-head">
-        <img :src="build.champion.image" :alt="build.champion.name" />
-        <div>
-          <div class="name">{{ build.champion.name }}</div>
-          <div class="title">{{ build.champion.title }} · patch {{ build.patch.replace('-aram', '').replace('-arena', '') }}<span v-if="build.mode === 'aram'"> · Howling Abyss</span><span v-else-if="build.mode === 'arena'"> · Arena</span></div>
-        </div>
-      </div>
-      <div class="roles" style="margin-top: 10px">
-        <button :class="{ active: build.mode === 'sr' }" @click="pickMode('sr')">Rift</button>
-        <button :class="{ active: build.mode === 'aram' }" @click="pickMode('aram')">ARAM</button>
-        <button :class="{ active: build.mode === 'arena' }" @click="pickMode('arena')">Arena</button>
-        <template v-if="build.mode !== 'aram' && build.mode !== 'arena'">
-          <span class="sep" />
-          <button v-for="r in ROLES" :key="r" class="sm" :class="{ active: role === r }" @click="pickRole(r)">
-            {{ ROLE_LABEL[r] }}
-            <span v-if="build.roles?.find((x) => x.role === r)" class="muted"> {{ build.roles?.find((x) => x.role === r)?.games }}</span>
-          </button>
-        </template>
-      </div>
-      <div class="row" style="margin-top: 10px">
-        <span class="badge" :class="build.source">
-          {{ build.source === 'opgg' ? (build.mode === 'arena' ? 'op.gg Arena stats' : build.mode === 'aram' ? 'op.gg ARAM stats' : 'op.gg ranked stats') : build.source === 'riot' ? 'Compiled from ranked matches' : build.source === 'lcu' ? 'Riot in-client recommendations' : 'No data' }}
-        </span>
-        <span v-if="build.tier" class="badge tier" :class="'t' + build.tier">Tier {{ tierLabel(build.tier) }} · #{{ build.rank }}<template v-if="build.pickRate"> · {{ pctf(build.pickRate) }} pick</template></span>
-        <span v-if="build.total.games && build.mode !== 'arena'" class="muted">{{ build.total.games }} games · {{ winrate(build.total) }} win rate</span>
-        <span v-else-if="build.total.games" class="muted">{{ build.total.games }} games · avg place {{ (build.avgPlace ?? 0).toFixed(2) }} · {{ pctf(build.top1 ?? 0) }} first</span>
-      </div>
-      <div class="row" style="margin-top: 6px">
-        <span v-if="me?.mastery" class="badge lcu" :title="`Highest grade ${me.mastery.highestGrade}`">You: M{{ me.mastery.championLevel }} · {{ fmtPoints(me.mastery.championPoints) }}</span>
-        <span v-if="me?.record" class="badge riot">
-          Recent {{ build.mode === 'aram' ? 'ARAM' : 'Rift' }}: {{ me.record.wins }}W {{ me.record.games - me.record.wins }}L ·
-          {{ ((me.record.kills + me.record.assists) / Math.max(1, me.record.deaths)).toFixed(1) }} KDA
-        </span>
-        <label class="toggle" :class="{ on: follow }" style="margin-left: auto" @click="follow = !follow">
-          <span class="track" /><span class="muted">Follow</span>
-        </label>
-      </div>
-      <div v-if="info" class="playstyle">
-        <span class="badge" :class="info.tacticalInfo.damageType === 'kMagic' ? 'ap' : info.tacticalInfo.damageType === 'kPhysical' ? 'ad' : ''">
-          {{ DMG[info.tacticalInfo.damageType] ?? '?' }} · {{ info.tacticalInfo.attackType }} · {{ (info.roles ?? []).join(', ') }}
-        </span>
-        <div v-for="k in (['damage', 'durability', 'crowdControl', 'mobility', 'utility'] as const)" :key="k" class="ps">
-          <span class="lbl">{{ k === 'crowdControl' ? 'CC' : k }}</span>
-          <span class="pips"><i v-for="n in 3" :key="n" :class="{ on: n <= info.playstyleInfo[k] }" /></span>
-        </div>
-      </div>
-      <div v-for="n in build.notes ?? []" :key="n" class="note">{{ n }}</div>
-    </Widget>
-
+  <template v-if="build">
     <!-- Augments: one box per rarity -->
     <Widget v-for="r in RARITIES" :key="r" :id="'aug-' + r" :w="3" class="aug-col" :class="[r, { compact }]" v-show="build.augments?.length">
       <h2>{{ r }} augments <span class="muted" style="text-transform: none; letter-spacing: 0; margin-left: 8px">{{ build.augScope === 'champion' ? build.champion.name : 'global' }} · {{ build.mode === 'arena' ? 'op.gg + blitz' : 'aramgg' }}</span></h2>
@@ -180,7 +31,7 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
         <div class="stat"><b>{{ build.mode === 'arena' && a.avgPlace ? `#${a.avgPlace.toFixed(2)}` : pctf(a.winRate) }}</b>{{ a.games }}g · {{ pctf(a.pickRate) }}</div>
       </div>
       <div v-if="!augBy(build, r).length" class="muted">no data</div>
-      <button v-if="compact && (build.augments ?? []).filter((a) => a.rarity === r).length > 6" class="sm" style="margin-top: 6px" @click="expandAugs = !expandAugs">{{ expandAugs ? 'Top 6' : 'Show all' }}</button>
+      <button v-if="compact && (build.augments ?? []).filter((a) => a.rarity === r).length > 6" class="sm" style="margin-top: 6px" @click="s.expandAugs = !s.expandAugs">{{ s.expandAugs ? 'Top 6' : 'Show all' }}</button>
     </Widget>
 
     <!-- Arena: prismatic items -->
@@ -306,31 +157,12 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
       </template>
     </Widget>
   </template>
-  <Widget v-else-if="loading" id="build-loading" :w="3" :h="2"><div class="muted">Loading…</div></Widget>
 </template>
 
-
 <style scoped>
-.load-backdrop { position: fixed; inset: 0; z-index: 150; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); display: grid; place-items: center; animation: fadein .15s ease; }
-@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
-.load-card { display: grid; justify-items: center; gap: 8px; padding: 22px 34px; background: var(--panel-2); border: 1px solid var(--gold-dark); border-radius: var(--radius); box-shadow: var(--shadow-panel); }
-.load-card img { width: 96px; height: 96px; border: 2px solid var(--gold); border-radius: var(--radius-sm); box-shadow: 0 0 20px var(--gold-glow); }
-.load-name { font-family: var(--display); font-size: 20px; font-weight: 700; color: var(--gold-bright); letter-spacing: .04em; }
-.load-sub { color: var(--muted); font-size: 13px; }
-.spinner { width: 28px; height: 28px; border: 3px solid var(--gold-deep); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.roles { justify-content: flex-start; align-items: center; }
-.roles .sep { width: 1px; height: 22px; background: var(--gold-deep); margin: 0 4px; }
-.compact .build-head img { width: 44px; height: 44px; }
-.compact .build-head .name { font-size: 18px; }
 .compact .aug-desc { display: none; }
 .compact .aug { padding: 3px 6px; grid-template-columns: 28px 1fr auto; }
 .compact .aug img { width: 28px; height: 28px; }
-.compact .playstyle { display: none; }
-.badge.opgg { color: var(--hextech-2); border-color: var(--hextech-dim); }
-.badge.tier { color: var(--gold-bright); }
-.badge.tier.t1 { color: #ff8a3d; border-color: #ff8a3d; }
-.badge.tier.t2 { color: var(--gold); border-color: var(--gold); }
 .path { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 8px; }
 .lv { width: 26px; height: 32px; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 12px; border: 1px solid var(--gold-deep); background: var(--surface-input); position: relative; }
 .lv i { position: absolute; top: 1px; left: 3px; font-size: 8px; font-style: normal; color: var(--dim); }
@@ -346,11 +178,4 @@ button.sm { padding: 4px 8px; font-size: 10px; }
 .aug-desc { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tier-pip { font-family: var(--display); font-size: 10px; width: 16px; height: 16px; display: grid; place-items: center; border: 1px solid var(--gold-deep); color: var(--muted); }
 .tier-pip.t1 { color: #ff8a3d; border-color: #ff8a3d; } .tier-pip.t2 { color: var(--gold); border-color: var(--gold); } .tier-pip.t3 { color: var(--hextech-2); border-color: var(--hextech-dim); }
-.playstyle { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-.ps { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); text-transform: capitalize; }
-.pips { display: inline-flex; gap: 2px; }
-.pips i { width: 10px; height: 10px; border: 1px solid var(--gold-deep); background: var(--surface-input); }
-.pips i.on { background: var(--gold); box-shadow: 0 0 6px var(--gold-glow); }
-.badge.ap { color: #7fb3ff; border-color: #2a4a7a; }
-.badge.ad { color: #e8a33d; border-color: #7a5a2a; }
 </style>

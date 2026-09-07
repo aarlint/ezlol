@@ -21,7 +21,12 @@
 
 - [x] Widget dashboard (gridstack, per-screen layouts, edit/reset), themes ×6, toasts, Settings dialog, updates (Win in-place, mac swap updater), Rift mode, screenshots — released v1.0.4–v1.0.6
 
+- [x] ARAM augments by win rate, ghost slots, Save layout/Reset, symmetrical 3|6|3 defaults per screen (PRs #10–#13, unreleased on main)
+
+- [x] Champion card is a fixed bar above the grid (ChampionBar + shared build store); screen change resets forced mode/lane; layout store keys v3; README screenshots retaken
+
 ## Next
+- [ ] Release v1.0.8 when asked (bump electron/package.json + web/package.json, tag v1.0.8)
 - [x] Trade buttons verified in ARAM champ select (AVAILABLE + ids)
 - [ ] Verify Auto runes + reroll hint in next champ select
 - [ ] Verify post-game share badges at next game end

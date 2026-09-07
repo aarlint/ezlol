@@ -24,41 +24,37 @@ const P = (x: number, y: number, w: number, h: number): Pos => ({ x, y, w, h })
 
 /**
  * Built-in arrangements. Columns: left 3 | centre 6 | right 3 (12-column grid,
- * rows of 40px). Boxes that never coexist may share a slot.
+ * rows of 40px). The champion card is a fixed bar above the grid, not a box.
+ * Boxes that never coexist may share a slot.
  */
 const BUILD_IDLE: Record<string, Pos> = {
-  'build-head': P(3, 0, 3, 7), items: P(6, 0, 3, 12), runes: P(3, 7, 3, 10), spells: P(6, 12, 3, 10),
-  boots: P(9, 0, 3, 12), 'aug-prismatic': P(9, 12, 3, 9), 'aug-gold': P(9, 21, 3, 9), 'aug-silver': P(9, 30, 3, 9),
-  prismatic: P(9, 39, 3, 10), synergies: P(9, 49, 3, 10),
+  items: P(3, 0, 3, 12), spells: P(3, 12, 3, 12), runes: P(6, 0, 3, 12), boots: P(6, 12, 3, 12),
+  'aug-prismatic': P(9, 0, 3, 9), 'aug-gold': P(9, 9, 3, 9), 'aug-silver': P(9, 18, 3, 9),
+  prismatic: P(9, 27, 3, 10), synergies: P(9, 37, 3, 10),
 }
+const LIVE_RIGHT: Record<string, Pos> = { 'live-you': P(9, 0, 3, 8), 'live-shopping': P(9, 8, 3, 12), 'live-killfeed': P(9, 20, 3, 12) }
+// Build block under the two team boxes: items | runes, then spells | boots.
+const BUILD_UNDER_TEAMS: Record<string, Pos> = { items: P(3, 20, 3, 12), runes: P(6, 20, 3, 12), spells: P(3, 32, 3, 10), boots: P(6, 32, 3, 12) }
 export const DEFAULT_LAYOUTS: Record<ModeKey, Record<string, Pos>> = {
-  idle: {
-    queue: P(0, 0, 3, 10), picker: P(0, 10, 3, 9), compile: P(0, 19, 3, 6),
-    postgame: P(3, 22, 6, 12),
-    ...BUILD_IDLE,
-  },
+  idle: { queue: P(0, 0, 3, 10), picker: P(0, 10, 3, 9), compile: P(0, 19, 3, 6), postgame: P(3, 24, 6, 12), ...BUILD_IDLE },
   select: {
     'cs-team': P(0, 0, 4, 9), 'cs-enemies': P(4, 0, 4, 9), 'cs-bench': P(8, 0, 4, 9),
-    'build-head': P(0, 9, 3, 7), items: P(3, 9, 3, 12), boots: P(6, 9, 3, 12), runes: P(9, 9, 3, 10),
-    spells: P(0, 16, 3, 10), 'aug-gold': P(3, 21, 3, 9), 'aug-silver': P(6, 21, 3, 9), 'aug-prismatic': P(9, 19, 3, 9),
-    prismatic: P(0, 26, 3, 10), synergies: P(9, 28, 3, 10),
+    items: P(0, 9, 3, 12), boots: P(3, 9, 3, 12), runes: P(6, 9, 3, 12), spells: P(9, 9, 3, 12),
+    'aug-prismatic': P(0, 21, 3, 9), 'aug-gold': P(3, 21, 3, 9), 'aug-silver': P(6, 21, 3, 9),
+    prismatic: P(9, 21, 3, 10), synergies: P(9, 31, 3, 10),
   },
   'game-rift': {
     'live-status': P(0, 0, 3, 8), 'live-objectives': P(0, 8, 3, 9), 'live-matchup': P(0, 17, 3, 9),
-    'live-enemies': P(3, 0, 6, 10), 'live-allies': P(3, 10, 6, 10),
-    'build-head': P(3, 20, 3, 7), items: P(6, 20, 3, 12), runes: P(3, 27, 3, 10), spells: P(6, 32, 3, 10),
-    'live-you': P(9, 0, 3, 8), 'live-shopping': P(9, 8, 3, 8), 'live-killfeed': P(9, 16, 3, 8), boots: P(9, 24, 3, 12),
+    'live-enemies': P(3, 0, 6, 10), 'live-allies': P(3, 10, 6, 10), ...BUILD_UNDER_TEAMS, ...LIVE_RIGHT,
   },
   'game-aram': {
     'live-status': P(0, 0, 3, 8), 'aug-prismatic': P(0, 8, 3, 9), 'aug-gold': P(0, 17, 3, 9), 'aug-silver': P(0, 26, 3, 9),
-    'live-enemies': P(3, 0, 6, 10), 'live-allies': P(3, 10, 6, 10),
-    'build-head': P(3, 20, 3, 7), items: P(6, 20, 3, 12), runes: P(3, 27, 3, 10), spells: P(6, 32, 3, 10),
-    'live-you': P(9, 0, 3, 8), 'live-shopping': P(9, 8, 3, 8), 'live-killfeed': P(9, 16, 3, 8), boots: P(9, 24, 3, 12),
+    'live-enemies': P(3, 0, 6, 10), 'live-allies': P(3, 10, 6, 10), ...BUILD_UNDER_TEAMS, ...LIVE_RIGHT,
   },
   'game-arena': {
     'live-status': P(0, 0, 3, 8), prismatic: P(0, 8, 3, 10), synergies: P(0, 18, 3, 10), 'aug-prismatic': P(0, 28, 3, 9),
     'arena-mine': P(3, 0, 6, 7), 'arena-teams': P(3, 7, 6, 24),
-    'build-head': P(3, 31, 3, 7), items: P(6, 31, 3, 12), spells: P(3, 38, 3, 10), boots: P(6, 43, 3, 12), runes: P(3, 48, 3, 10),
+    items: P(3, 31, 3, 12), boots: P(6, 31, 3, 12), spells: P(3, 43, 3, 10), runes: P(6, 43, 3, 10),
     'live-you': P(9, 0, 3, 8), 'live-shopping': P(9, 8, 3, 8), 'live-killfeed': P(9, 16, 3, 8), 'aug-gold': P(9, 24, 3, 9), 'aug-silver': P(9, 33, 3, 9),
   },
 }
@@ -72,7 +68,6 @@ export interface WidgetSpec {
   when?: string
 }
 const BUILD_WIDGETS: WidgetSpec[] = [
-  { id: 'build-head', title: 'Champion', w: 3, h: 7 },
   { id: 'items', title: 'Items', w: 3, h: 12 },
   { id: 'boots', title: 'Boots & late items', w: 3, h: 12 },
   { id: 'runes', title: 'Runes', w: 3, h: 10 },
@@ -139,8 +134,8 @@ export const CATALOG: Record<ModeKey, WidgetSpec[]> = {
 const COLUMNS = 12
 const CELL = 40
 const MARGIN = 6
-const STORE = 'ezlol.layout.v2'
-const PRESET = 'ezlol.layout.preset.v1' // user-saved arrangements, restored by Reset
+const STORE = 'ezlol.layout.v3' // v3: champion card left the grid, every default moved
+const PRESET = 'ezlol.layout.preset.v2' // user-saved arrangements, restored by Reset
 
 type Layouts = Record<string, Record<string, Pos>>
 
@@ -385,7 +380,6 @@ export class DashboardGrid implements Dashboard {
       if (!n.id) continue
       let id = String(n.id)
       if (id.startsWith('ghost:')) id = id.slice(6)
-      if (id === 'build-loading' || id === 'build-empty') continue // transient placeholders
       // A real box wins over its ghost if both are somehow present.
       if (m[id] && !String(n.id).startsWith('ghost:')) m[id] = { x: n.x ?? 0, y: n.y ?? 0, w: n.w ?? 3, h: n.h ?? 4 }
       else if (!m[id]) m[id] = { x: n.x ?? 0, y: n.y ?? 0, w: n.w ?? 3, h: n.h ?? 4 }
