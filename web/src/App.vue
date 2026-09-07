@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
-import { CATALOG, DASH_KEY, DashboardGrid } from './dashboard'
+import { CATALOG, DASH_KEY, DashboardGrid, type ModeKey } from './dashboard'
 import GhostWidget from './components/GhostWidget.vue'
 import { api, isElectron, subscribe } from './api'
 import * as sound from './sound'
@@ -137,18 +137,29 @@ onMounted(async () => {
 onUnmounted(() => unsub?.())
 
 // Widget dashboard: one grid per screen mode; widgets register on mount.
-const dash = new DashboardGrid(() => mode.value)
+const ARAM_QUEUES = new Set([450, 2400, 100])
+const ARENA_QUEUES = new Set([1700, 1710, 1750])
+// In-game screens differ by mode, so each gets its own default layout and saved arrangement.
+const modeKey = computed<ModeKey>(() => {
+  if (mode.value !== 'game') return mode.value
+  const q = status.value?.queueId ?? 0
+  const map = status.value?.mapId ?? 0
+  if (ARENA_QUEUES.has(q) || map === 30) return 'game-arena'
+  if (ARAM_QUEUES.has(q) || map === 12) return 'game-aram'
+  return 'game-rift'
+})
+const dash = new DashboardGrid(() => modeKey.value)
 provide(DASH_KEY, dash)
 const mainEl = ref<HTMLElement | null>(null)
 const editing = ref(false)
 // Ghost slots: every catalogued box for this screen that is not mounted right now.
-const ghosts = computed(() => (editing.value ? CATALOG[mode.value].filter((w) => !dash.mounted.has(w.id)) : []))
+const ghosts = computed(() => (editing.value ? CATALOG[modeKey.value].filter((w) => !dash.mounted.has(w.id)) : []))
 const layoutVersion = ref(0)
 function attachGrid() {
   if (mainEl.value) dash.attach(mainEl.value)
 }
 onMounted(attachGrid)
-watch([mode, layoutVersion], async () => {
+watch([modeKey, layoutVersion], async () => {
   await nextTick()
   attachGrid()
 })
@@ -170,7 +181,7 @@ function forgetLayout() {
   hasPreset.value = false
   toast({ key: 'layout', kind: 'info', title: 'Saved layout forgotten', body: 'Reset will use the built-in arrangement again.', ttl: 4000 })
 }
-watch([editing, mode], () => (hasPreset.value = dash.hasPreset()))
+watch([editing, modeKey], () => (hasPreset.value = dash.hasPreset()))
 watch(soundOn, (v) => sound.setEnabled(v))
 
 function select(c: Champion) {
@@ -215,7 +226,7 @@ async function toggleAuto() {
     <SettingsModal v-if="showSettings" @close="showSettings = false" />
 
     <div class="layout" :class="mode">
-      <div ref="mainEl" :key="mode + ':' + layoutVersion" class="main grid-stack" :class="[mode, { editing }]">
+      <div ref="mainEl" :key="modeKey + ':' + layoutVersion" class="main grid-stack" :class="[mode, { editing }]">
         <QueuePanel v-if="mode === 'idle'" :status="status" :logs="logs" @select="select" />
         <EndOfGame v-if="mode === 'idle'" />
         <ChampSelect v-if="mode === 'select'" @preview="select" />

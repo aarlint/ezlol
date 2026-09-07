@@ -13,6 +13,56 @@ export interface Dashboard {
   mounted: Set<string>
 }
 
+export const DASH_KEY: InjectionKey<Dashboard> = Symbol('dashboard')
+
+
+/** Screens: idle (lobby/post-game), select (champ select), and in-game per mode. */
+export type ModeKey = 'idle' | 'select' | 'game-rift' | 'game-aram' | 'game-arena'
+
+type Pos = { x: number; y: number; w: number; h: number }
+const P = (x: number, y: number, w: number, h: number): Pos => ({ x, y, w, h })
+
+/**
+ * Built-in arrangements. Columns: left 3 | centre 6 | right 3 (12-column grid,
+ * rows of 40px). Boxes that never coexist may share a slot.
+ */
+const BUILD_IDLE: Record<string, Pos> = {
+  'build-head': P(3, 0, 3, 7), items: P(6, 0, 3, 12), runes: P(3, 7, 3, 10), spells: P(6, 12, 3, 10),
+  boots: P(9, 0, 3, 12), 'aug-prismatic': P(9, 12, 3, 9), 'aug-gold': P(9, 21, 3, 9), 'aug-silver': P(9, 30, 3, 9),
+  prismatic: P(9, 39, 3, 10), synergies: P(9, 49, 3, 10),
+}
+export const DEFAULT_LAYOUTS: Record<ModeKey, Record<string, Pos>> = {
+  idle: {
+    queue: P(0, 0, 3, 10), picker: P(0, 10, 3, 9), compile: P(0, 19, 3, 6),
+    postgame: P(3, 22, 6, 12),
+    ...BUILD_IDLE,
+  },
+  select: {
+    'cs-team': P(0, 0, 4, 9), 'cs-enemies': P(4, 0, 4, 9), 'cs-bench': P(8, 0, 4, 9),
+    'build-head': P(0, 9, 3, 7), items: P(3, 9, 3, 12), boots: P(6, 9, 3, 12), runes: P(9, 9, 3, 10),
+    spells: P(0, 16, 3, 10), 'aug-gold': P(3, 21, 3, 9), 'aug-silver': P(6, 21, 3, 9), 'aug-prismatic': P(9, 19, 3, 9),
+    prismatic: P(0, 26, 3, 10), synergies: P(9, 28, 3, 10),
+  },
+  'game-rift': {
+    'live-status': P(0, 0, 3, 8), 'live-objectives': P(0, 8, 3, 9), 'live-matchup': P(0, 17, 3, 9),
+    'live-enemies': P(3, 0, 6, 10), 'live-allies': P(3, 10, 6, 10),
+    'build-head': P(3, 20, 3, 7), items: P(6, 20, 3, 12), runes: P(3, 27, 3, 10), spells: P(6, 32, 3, 10),
+    'live-you': P(9, 0, 3, 8), 'live-shopping': P(9, 8, 3, 8), 'live-killfeed': P(9, 16, 3, 8), boots: P(9, 24, 3, 12),
+  },
+  'game-aram': {
+    'live-status': P(0, 0, 3, 8), 'aug-prismatic': P(0, 8, 3, 9), 'aug-gold': P(0, 17, 3, 9), 'aug-silver': P(0, 26, 3, 9),
+    'live-enemies': P(3, 0, 6, 10), 'live-allies': P(3, 10, 6, 10),
+    'build-head': P(3, 20, 3, 7), items: P(6, 20, 3, 12), runes: P(3, 27, 3, 10), spells: P(6, 32, 3, 10),
+    'live-you': P(9, 0, 3, 8), 'live-shopping': P(9, 8, 3, 8), 'live-killfeed': P(9, 16, 3, 8), boots: P(9, 24, 3, 12),
+  },
+  'game-arena': {
+    'live-status': P(0, 0, 3, 8), prismatic: P(0, 8, 3, 10), synergies: P(0, 18, 3, 10), 'aug-prismatic': P(0, 28, 3, 9),
+    'arena-mine': P(3, 0, 6, 7), 'arena-teams': P(3, 7, 6, 24),
+    'build-head': P(3, 31, 3, 7), items: P(6, 31, 3, 12), spells: P(3, 38, 3, 10), boots: P(6, 43, 3, 12), runes: P(3, 48, 3, 10),
+    'live-you': P(9, 0, 3, 8), 'live-shopping': P(9, 8, 3, 8), 'live-killfeed': P(9, 16, 3, 8), 'aug-gold': P(9, 24, 3, 9), 'aug-silver': P(9, 33, 3, 9),
+  },
+}
+
 /** Every box a screen can show, so edit mode can offer a ghost slot for the ones not on screen yet. */
 export interface WidgetSpec {
   id: string
@@ -27,68 +77,71 @@ const BUILD_WIDGETS: WidgetSpec[] = [
   { id: 'boots', title: 'Boots & late items', w: 3, h: 12 },
   { id: 'runes', title: 'Runes', w: 3, h: 10 },
   { id: 'spells', title: 'Spells & skills', w: 3, h: 10 },
-  { id: 'aug-prismatic', title: 'Prismatic augments', w: 3, h: 10, when: 'ARAM Mayhem / Arena' },
-  { id: 'aug-gold', title: 'Gold augments', w: 3, h: 10, when: 'ARAM Mayhem / Arena' },
-  { id: 'aug-silver', title: 'Silver augments', w: 3, h: 10, when: 'ARAM Mayhem / Arena' },
-  { id: 'prismatic', title: 'Prismatic items', w: 3, h: 10, when: 'Arena' },
-  { id: 'synergies', title: 'Best partners', w: 3, h: 10, when: 'Arena' },
 ]
-export const CATALOG: Record<string, WidgetSpec[]> = {
+const AUG_WIDGETS: WidgetSpec[] = [
+  { id: 'aug-prismatic', title: 'Prismatic augments', w: 3, h: 9 },
+  { id: 'aug-gold', title: 'Gold augments', w: 3, h: 9 },
+  { id: 'aug-silver', title: 'Silver augments', w: 3, h: 9 },
+]
+const ARENA_BUILD: WidgetSpec[] = [
+  { id: 'prismatic', title: 'Prismatic items', w: 3, h: 10 },
+  { id: 'synergies', title: 'Best partners', w: 3, h: 10 },
+]
+const LIVE_COMMON: WidgetSpec[] = [
+  { id: 'live-status', title: 'Live', w: 3, h: 8 },
+  { id: 'live-you', title: 'You', w: 3, h: 8 },
+  { id: 'live-shopping', title: 'Shopping', w: 3, h: 8 },
+  { id: 'live-killfeed', title: 'Kill feed', w: 3, h: 8 },
+]
+export const CATALOG: Record<ModeKey, WidgetSpec[]> = {
   idle: [
     { id: 'queue', title: 'Queue watcher', w: 3, h: 10 },
     { id: 'postgame', title: 'Post-game', w: 6, h: 12, when: 'after a game' },
     ...BUILD_WIDGETS,
+    ...AUG_WIDGETS.map((w) => ({ ...w, when: 'ARAM / Arena build' })),
+    ...ARENA_BUILD.map((w) => ({ ...w, when: 'Arena build' })),
     { id: 'picker', title: 'Champion picker', w: 3, h: 9 },
     { id: 'compile', title: 'Build data', w: 3, h: 6 },
   ],
   select: [
     { id: 'cs-team', title: 'Champ select · your team', w: 4, h: 9 },
-    { id: 'cs-enemies', title: 'Champ select · enemies', w: 4, h: 7, when: 'once enemy picks are visible' },
-    { id: 'cs-bench', title: 'Bench', w: 4, h: 8, when: 'ARAM' },
+    { id: 'cs-enemies', title: 'Champ select · enemies', w: 4, h: 9, when: 'once enemy picks are visible' },
+    { id: 'cs-bench', title: 'Bench', w: 4, h: 9, when: 'ARAM' },
+    ...BUILD_WIDGETS,
+    ...AUG_WIDGETS.map((w) => ({ ...w, when: 'ARAM / Arena' })),
+    ...ARENA_BUILD.map((w) => ({ ...w, when: 'Arena' })),
+  ],
+  'game-rift': [
+    ...LIVE_COMMON,
+    { id: 'live-enemies', title: 'Enemies', w: 6, h: 10 },
+    { id: 'live-allies', title: 'Your team', w: 6, h: 10 },
+    { id: 'live-objectives', title: 'Objectives', w: 3, h: 9 },
+    { id: 'live-matchup', title: 'Matchup', w: 3, h: 9, when: 'lane opponent known' },
     ...BUILD_WIDGETS,
   ],
-  game: [
-    { id: 'live-status', title: 'Live', w: 3, h: 6 },
-    { id: 'live-enemies', title: 'Enemies', w: 6, h: 10, when: 'Rift / ARAM' },
-    { id: 'live-allies', title: 'Your team', w: 6, h: 10, when: 'Rift / ARAM' },
-    { id: 'arena-mine', title: 'Your team (Arena)', w: 6, h: 7, when: 'Arena' },
-    { id: 'arena-teams', title: 'Enemy teams (Arena)', w: 6, h: 24, when: 'Arena' },
-    { id: 'live-you', title: 'You', w: 3, h: 8 },
-    { id: 'live-objectives', title: 'Objectives', w: 3, h: 9, when: 'Rift' },
-    { id: 'live-matchup', title: 'Matchup', w: 3, h: 8, when: 'Rift' },
-    { id: 'live-shopping', title: 'Shopping', w: 3, h: 8 },
-    { id: 'live-killfeed', title: 'Kill feed', w: 3, h: 8 },
+  'game-aram': [
+    ...LIVE_COMMON,
+    { id: 'live-enemies', title: 'Enemies', w: 6, h: 10 },
+    { id: 'live-allies', title: 'Your team', w: 6, h: 10 },
     ...BUILD_WIDGETS,
+    ...AUG_WIDGETS.map((w) => ({ ...w, when: 'ARAM Mayhem' })),
+  ],
+  'game-arena': [
+    ...LIVE_COMMON,
+    { id: 'arena-mine', title: 'Your team (Arena)', w: 6, h: 7, when: 'after the first fights' },
+    { id: 'arena-teams', title: 'Enemy teams (Arena)', w: 6, h: 24, when: 'after the first fights' },
+    ...BUILD_WIDGETS,
+    ...ARENA_BUILD,
+    ...AUG_WIDGETS,
   ],
 }
-
-export const DASH_KEY: InjectionKey<Dashboard> = Symbol('dashboard')
 
 const COLUMNS = 12
-
-/**
- * Default arrangement: widgets without a saved position are laid out in this
- * priority order (top-left first), regardless of the order they mounted in.
- * Ids not listed come after, in mount order. W is the default width in columns.
- */
-const ORDER = [
-  'live-status', 'arena-mine', 'live-enemies', 'live-you', 'arena-teams', 'live-allies', 'live-objectives', 'live-matchup', 'live-shopping', 'live-killfeed',
-  'cs-team', 'cs-enemies', 'cs-bench',
-  'queue', 'postgame',
-  'build-head', 'prismatic', 'synergies', 'items', 'boots', 'runes', 'spells', 'aug-prismatic', 'aug-gold', 'aug-silver',
-  'picker', 'compile', 'build-empty', 'build-loading',
-]
-/** Default height cap (rows) for boxes whose content keeps growing (feeds, lists). */
-const MAXH: Record<string, number> = { 'live-shopping': 8, 'live-killfeed': 8, queue: 10, picker: 9, boots: 14, 'aug-prismatic': 10, 'aug-gold': 10, 'aug-silver': 10, 'arena-teams': 30 }
-const W: Record<string, number> = {
-  'live-enemies': 6, 'live-allies': 6, 'arena-mine': 6, 'arena-teams': 6, 'cs-team': 4, 'cs-enemies': 4, 'cs-bench': 4, postgame: 6,
-}
 const CELL = 40
 const MARGIN = 6
 const STORE = 'ezlol.layout.v2'
 const PRESET = 'ezlol.layout.preset.v1' // user-saved arrangements, restored by Reset
 
-type Pos = { x: number; y: number; w: number; h: number }
 type Layouts = Record<string, Record<string, Pos>>
 
 /** Natural height of a widget's content (ignoring the box it currently sits in). */
@@ -145,7 +198,7 @@ export class DashboardGrid implements Dashboard {
   private auto = new Map<HTMLElement, ResizeObserver>()
   readonly mounted = reactive(new Set<string>())
 
-  constructor(private mode: () => string) {}
+  constructor(private mode: () => ModeKey) {}
 
   private reloading = false
 
@@ -263,15 +316,16 @@ export class DashboardGrid implements Dashboard {
     // node; drop that node so makeWidget can apply our real size and position.
     if ((el as HTMLElement & { gridstackNode?: unknown }).gridstackNode) this.grid.removeWidget(el, false, false)
     const realID = id.startsWith('ghost:') ? id.slice(6) : id
-    const saved = this.layouts[this.mode()]?.[realID]
-    const w = Math.min(COLUMNS, Math.max(2, saved?.w ?? W[realID] ?? opts.w ?? 3))
+    const saved = this.layouts[this.mode()]?.[realID] ?? DEFAULT_LAYOUTS[this.mode()]?.[realID]
+    const w = Math.min(COLUMNS, Math.max(2, saved?.w ?? opts.w ?? 3))
     const spec: GridStackWidget = { id, w }
     if (saved) {
       spec.x = saved.x
       spec.y = saved.y
       spec.h = saved.h
     } else {
-      spec.h = Math.min(MAXH[realID] ?? 40, opts.h ?? this.measureRows(el, w))
+      // Not in the catalogue: size to content and drop into the first free spot.
+      spec.h = Math.min(40, opts.h ?? this.measureRows(el, w))
       spec.autoPosition = true
     }
     this.grid.makeWidget(el, spec)
@@ -279,37 +333,9 @@ export class DashboardGrid implements Dashboard {
       if (this.editing) this.persist()
       return
     }
-    if (!saved) {
-      this.track(el, MAXH[realID] ?? 40)
-      this.scheduleRelayout()
-    }
+    if (!saved) this.track(el, 40)
   }
 
-  private relayoutTimer: ReturnType<typeof setTimeout> | null = null
-  private scheduleRelayout() {
-    if (this.relayoutTimer) clearTimeout(this.relayoutTimer)
-    this.relayoutTimer = setTimeout(() => this.relayout(), 60)
-  }
-
-  /** Re-place every unsaved widget in ORDER priority so late mounts still land where they belong. */
-  private relayout() {
-    const g = this.grid
-    if (!g || this.editing) return
-    const saved = this.layouts[this.mode()] ?? {}
-    type Node = { el?: HTMLElement; id?: string; w?: number; h?: number }
-    const nodes = (g.engine.nodes as Node[]).filter((n) => n.el && n.id && !saved[String(n.id)] && !n.el.classList.contains('ghost'))
-    const rank = (id: string) => {
-      const i = ORDER.indexOf(id)
-      return i < 0 ? ORDER.length : i
-    }
-    const mountIndex = new Map(nodes.map((n, i) => [n, i]))
-    nodes.sort((a, b) => rank(String(a.id)) - rank(String(b.id)) || (mountIndex.get(a) ?? 0) - (mountIndex.get(b) ?? 0))
-    // (ghosts are excluded above, so ids here are real ids)
-    g.batchUpdate()
-    for (const n of nodes) g.removeWidget(n.el!, false, false)
-    for (const n of nodes) g.makeWidget(n.el!, { id: n.id, w: n.w, h: n.h, autoPosition: true })
-    g.batchUpdate(false)
-  }
 
   /** Grow/shrink an auto-sized widget as its content settles; stops once the user edits. */
   private track(el: HTMLElement, maxRows: number) {
@@ -321,10 +347,7 @@ export class DashboardGrid implements Dashboard {
       if (rows === last) return
       last = rows
       const node = (el as HTMLElement & { gridstackNode?: { h?: number } }).gridstackNode
-      if (node && node.h !== rows) {
-        this.grid.update(el, { h: rows })
-        this.scheduleRelayout()
-      }
+      if (node && node.h !== rows) this.grid.update(el, { h: rows })
     }
     // Content that was mid-load at mount (fonts, data) settles within a few seconds;
     // poll for that window, then leave the layout alone during play.

@@ -102,7 +102,9 @@ Static data (champion, item, rune and spell names and images) comes from Data Dr
 ## Dashboard
 
 Every box is a widget on a 12-column grid. Flip **Edit layout** in the header to drag boxes around and
-resize them from the corner; the arrangement is remembered per screen (lobby, champ select, in game).
+resize them from the corner; the arrangement is remembered per screen (lobby, champ select, and in game
+for Rift, ARAM and Arena separately). Each screen ships with a symmetrical 3 | 6 | 3 column default: live
+scoreboards and team boxes in the middle, status and augments on the left, you / shopping / kill feed on the right.
 **Save layout** snapshots the current arrangement for that screen; **Reset** returns to that snapshot (or to
 the built-in arrangement if you never saved one); **Forget saved** drops the snapshot. Boxes scroll internally when their content is taller than the widget. In edit mode every box the
 screen *can* show, including ones that only appear later (bench in ARAM, enemy picks, Arena teams, augments…),
