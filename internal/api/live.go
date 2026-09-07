@@ -66,6 +66,7 @@ type liveResponse struct {
 	OCR        string             `json:"ocr"` // available | unavailable | error text
 	Objectives *objectives        `json:"objectives,omitempty"`
 	Opponent   string             `json:"opponent,omitempty"` // lane opponent champion name
+	Arena      *arenaInfo         `json:"arena,omitempty"`
 	Events     []live.Event       `json:"events"`
 }
 
@@ -124,6 +125,9 @@ func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
 			lp.Spells = append(lp.Spells, ls)
 		}
 		resp.Players = append(resp.Players, lp)
+	}
+	if gd.GameData.MapNumber == 30 {
+		s.applyArena(r.Context(), &resp, gd)
 	}
 	resp.Hint = threatHint(resp.Players, resp.MyTeam)
 	resp.Focus, resp.FocusWhy = s.focusTarget(r.Context(), resp.Players, resp.MyTeam)

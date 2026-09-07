@@ -41,6 +41,7 @@ type Server struct {
 	info      infoCache
 	ocr       *screen.Reader
 	offer     offerState
+	arena     arenaCache
 	ui        fs.FS  // built frontend, may be nil in dev
 	devProxy  string // vite dev server url, may be empty
 }
@@ -68,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/update", s.getUpdate)
 	mux.HandleFunc("POST /api/update/check", s.checkUpdate)
 	mux.HandleFunc("GET /api/mastery", s.mastery)
+	mux.HandleFunc("GET /api/arena/tiers", s.arenaTiers)
 	mux.HandleFunc("GET /api/champions/{key}/info", s.championInfo)
 	mux.HandleFunc("POST /api/runes/apply", s.applyRunes)
 	mux.HandleFunc("GET /api/champions/{key}/spells", s.championSpells)
@@ -267,6 +269,8 @@ func (s *Server) build(w http.ResponseWriter, r *http.Request) {
 		queueID = 450
 	case "sr":
 		queueID = 420
+	case "arena":
+		queueID = 1700
 	}
 	mode := builds.QueueTag(queueID)
 	patch = builds.StoreKey(patch, queueID)
@@ -284,9 +288,12 @@ func (s *Server) build(w http.ResponseWriter, r *http.Request) {
 	if s.community != nil {
 		var cb *builds.Build
 		var err error
-		if mode == "aram" {
+		switch mode {
+		case "aram":
 			cb, err = s.community.ARAMBuild(r.Context(), d, champ)
-		} else {
+		case "arena":
+			cb, err = s.community.ArenaBuild(r.Context(), d, champ)
+		default:
 			cb, err = s.community.RiftBuild(r.Context(), d, champ, role)
 		}
 		if err != nil {
@@ -320,6 +327,13 @@ func (s *Server) build(w http.ResponseWriter, r *http.Request) {
 			b.Augments, b.AugScope = augs, scope
 		}
 	}
+	if mode == "arena" && s.community != nil {
+		if augs, scope, err := s.community.ArenaAugments(r.Context(), st.Patch, champ.ID); err != nil {
+			s.log.Warn("arena augments", "champion", champ.Key, "err", err)
+		} else {
+			b.Augments, b.AugScope = augs, scope
+		}
+	}
 
 	// Riot's in-client recommended runes need no key; add them when the client is
 	// up and we have nothing better than them.
@@ -329,6 +343,9 @@ func (s *Server) build(w http.ResponseWriter, r *http.Request) {
 		mapID := 11
 		if mode == "aram" {
 			mapID = 12
+		}
+		if mode == "arena" {
+			mapID = 30
 		}
 		pos := role
 		if mapID == 12 {
@@ -476,4 +493,18 @@ func (s *Server) mastery(w http.ResponseWriter, r *http.Request) {
 	}
 	s.player.refresh(r.Context(), c)
 	writeJSON(w, 200, s.player.AllMastery())
+}
+
+// arenaTiers returns the Arena champion tier list (champion id -> standing).
+func (s *Server) arenaTiers(w http.ResponseWriter, r *http.Request) {
+	if s.community == nil {
+		writeJSON(w, 200, map[string]any{})
+		return
+	}
+	tiers, err := s.community.ArenaTiers(r.Context())
+	if err != nil {
+		writeErr(w, 502, err.Error())
+		return
+	}
+	writeJSON(w, 200, tiers)
 }

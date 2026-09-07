@@ -53,6 +53,7 @@ export interface ItemRef {
 }
 export interface ItemSet extends Count {
   items: ItemRef[]
+  avgPlace?: number
 }
 export interface RuneRef {
   id: number
@@ -110,7 +111,18 @@ export interface Build {
   pickRate?: number
   augments?: Augment[]
   augScope?: string
+  prismatic?: ItemSet[] | null
+  synergies?: Synergy[] | null
+  avgPlace?: number
+  top1?: number
   notes: string[] | null
+}
+export interface Synergy {
+  champion: Champion
+  games: number
+  winRate: number
+  avgPlace: number
+  top1: number
 }
 export interface Augment {
   id: number
@@ -123,6 +135,8 @@ export interface Augment {
   pickRate: number
   games: number
   scope: string
+  avgPlace?: number
+  top1?: number
 }
 
 export interface Progress {
@@ -213,6 +227,23 @@ export interface Live {
   ocr: string
   objectives?: Objectives
   opponent?: string
+  arena?: ArenaInfo
+}
+export interface ArenaTeam {
+  id: number
+  mine: boolean
+  players: string[]
+  kills: number
+  deaths: number
+  alive: number
+  itemAD: number
+  itemAP: number
+  threat: number
+}
+export interface ArenaInfo {
+  teams: ArenaTeam[] | null
+  teamSize: number
+  unassigned?: string[] | null
 }
 export interface Objectives {
   allyDragons: string[] | null
@@ -374,4 +405,12 @@ export interface UpdateInfo {
   notes: string
   checkedAt: string
   error?: string
+}
+
+export interface ArenaTier {
+  tier: number
+  rank: number
+  avgPlace: number
+  top1: number
+  pickRate: number
 }

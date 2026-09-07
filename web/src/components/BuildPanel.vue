@@ -12,7 +12,7 @@ const follow = defineModel<boolean>('follow', { default: true })
 const build = ref<Build | null>(null)
 const role = ref('')
 // '' = follow the client's current queue; 'sr' | 'aram' = forced
-const mode = ref<'' | 'sr' | 'aram'>('')
+const mode = ref<'' | 'sr' | 'aram' | 'arena'>('')
 const loading = ref(false)
 const loadingChamp = ref<Champion | null>(null)
 const err = ref('')
@@ -66,7 +66,7 @@ function pickRole(r: string) {
   role.value = r
   load()
 }
-function pickMode(m: '' | 'sr' | 'aram') {
+function pickMode(m: '' | 'sr' | 'aram' | 'arena') {
   mode.value = m
   // Lane only means something on the Rift; drop ARAM's "NONE" and let the server pick.
   if (m !== 'sr' || role.value === 'NONE') role.value = ''
@@ -123,13 +123,14 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
         <img :src="build.champion.image" :alt="build.champion.name" />
         <div>
           <div class="name">{{ build.champion.name }}</div>
-          <div class="title">{{ build.champion.title }} · patch {{ build.patch.replace('-aram', '') }}<span v-if="build.mode === 'aram'"> · Howling Abyss</span></div>
+          <div class="title">{{ build.champion.title }} · patch {{ build.patch.replace('-aram', '').replace('-arena', '') }}<span v-if="build.mode === 'aram'"> · Howling Abyss</span><span v-else-if="build.mode === 'arena'"> · Arena</span></div>
         </div>
       </div>
       <div class="roles" style="margin-top: 10px">
         <button :class="{ active: build.mode === 'sr' }" @click="pickMode('sr')">Rift</button>
         <button :class="{ active: build.mode === 'aram' }" @click="pickMode('aram')">ARAM</button>
-        <template v-if="build.mode !== 'aram'">
+        <button :class="{ active: build.mode === 'arena' }" @click="pickMode('arena')">Arena</button>
+        <template v-if="build.mode !== 'aram' && build.mode !== 'arena'">
           <span class="sep" />
           <button v-for="r in ROLES" :key="r" class="sm" :class="{ active: role === r }" @click="pickRole(r)">
             {{ ROLE_LABEL[r] }}
@@ -139,10 +140,11 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
       </div>
       <div class="row" style="margin-top: 10px">
         <span class="badge" :class="build.source">
-          {{ build.source === 'opgg' ? 'op.gg ARAM stats' : build.source === 'riot' ? 'Compiled from ranked matches' : build.source === 'lcu' ? 'Riot in-client recommendations' : 'No data' }}
+          {{ build.source === 'opgg' ? (build.mode === 'arena' ? 'op.gg Arena stats' : build.mode === 'aram' ? 'op.gg ARAM stats' : 'op.gg ranked stats') : build.source === 'riot' ? 'Compiled from ranked matches' : build.source === 'lcu' ? 'Riot in-client recommendations' : 'No data' }}
         </span>
         <span v-if="build.tier" class="badge tier" :class="'t' + build.tier">Tier {{ tierLabel(build.tier) }} · #{{ build.rank }}<template v-if="build.pickRate"> · {{ pctf(build.pickRate) }} pick</template></span>
-        <span v-if="build.total.games" class="muted">{{ build.total.games }} games · {{ winrate(build.total) }} win rate</span>
+        <span v-if="build.total.games && build.mode !== 'arena'" class="muted">{{ build.total.games }} games · {{ winrate(build.total) }} win rate</span>
+        <span v-else-if="build.total.games" class="muted">{{ build.total.games }} games · avg place {{ (build.avgPlace ?? 0).toFixed(2) }} · {{ pctf(build.top1 ?? 0) }} first</span>
       </div>
       <div class="row" style="margin-top: 6px">
         <span v-if="me?.mastery" class="badge lcu" :title="`Highest grade ${me.mastery.highestGrade}`">You: M{{ me.mastery.championLevel }} · {{ fmtPoints(me.mastery.championPoints) }}</span>
@@ -168,17 +170,41 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
 
     <!-- Augments: one box per rarity -->
     <Widget v-for="r in RARITIES" :key="r" :id="'aug-' + r" :w="3" class="aug-col" :class="[r, { compact }]" v-show="build.augments?.length">
-      <h2>{{ r }} augments <span class="muted" style="text-transform: none; letter-spacing: 0; margin-left: 8px">{{ build.augScope === 'champion' ? build.champion.name : 'global' }} · aramgg</span></h2>
+      <h2>{{ r }} augments <span class="muted" style="text-transform: none; letter-spacing: 0; margin-left: 8px">{{ build.augScope === 'champion' ? build.champion.name : 'global' }} · {{ build.mode === 'arena' ? 'op.gg + blitz' : 'aramgg' }}</span></h2>
       <div v-for="a in augBy(build, r)" :key="a.id" class="aug" :title="a.desc">
         <img v-if="a.icon" :src="a.icon" :alt="a.name" />
         <div class="aug-body">
           <div class="aug-name"><span class="tier-pip" :class="'t' + a.tier">{{ tierLabel(a.tier) || '?' }}</span>{{ a.name }}</div>
           <div class="aug-desc">{{ a.desc }}</div>
         </div>
-        <div class="stat"><b>{{ pctf(a.winRate) }}</b>{{ a.games }}g · {{ pctf(a.pickRate) }}</div>
+        <div class="stat"><b>{{ build.mode === 'arena' && a.avgPlace ? `#${a.avgPlace.toFixed(2)}` : pctf(a.winRate) }}</b>{{ a.games }}g · {{ pctf(a.pickRate) }}</div>
       </div>
       <div v-if="!augBy(build, r).length" class="muted">no data</div>
       <button v-if="compact && (build.augments ?? []).filter((a) => a.rarity === r).length > 6" class="sm" style="margin-top: 6px" @click="expandAugs = !expandAugs">{{ expandAugs ? 'Top 6' : 'Show all' }}</button>
+    </Widget>
+
+    <!-- Arena: prismatic items -->
+    <Widget v-if="build.prismatic?.length" id="prismatic" :w="3">
+      <h2>Prismatic items <span class="muted" style="text-transform: none; letter-spacing: 0; margin-left: 8px">lower place is better</span></h2>
+      <div class="sets">
+        <div v-for="(s, i) in build.prismatic" :key="i" class="set">
+          <div class="items"><img v-for="(it, j) in s.items" :key="j" :src="it.image" :title="it.name" /></div>
+          <span>{{ s.items[0]?.name }}</span>
+          <div class="stat"><b>#{{ (s.avgPlace ?? 0).toFixed(2) }}</b>{{ pct(s, build.total.games) }}</div>
+        </div>
+      </div>
+    </Widget>
+
+    <!-- Arena: partners -->
+    <Widget v-if="build.synergies?.length" id="synergies" :w="3">
+      <h2>Best partners <span class="muted" style="text-transform: none; letter-spacing: 0; margin-left: 8px">teammates {{ build.champion.name }} places best with</span></h2>
+      <div class="sets">
+        <div v-for="sy in build.synergies" :key="sy.champion.id" class="set">
+          <img :src="sy.champion.image" :alt="sy.champion.name" style="width: 32px; height: 32px; border: 1px solid var(--gold-dark)" />
+          <span>{{ sy.champion.name }}</span>
+          <div class="stat"><b>#{{ sy.avgPlace.toFixed(2) }}</b>{{ pctf(sy.top1) }} first · {{ sy.games }}g</div>
+        </div>
+      </div>
     </Widget>
 
     <!-- Items -->

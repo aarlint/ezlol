@@ -18,7 +18,8 @@ type ItemRef struct {
 
 // ItemSet is a group of items with a tally.
 type ItemSet struct {
-	Items []ItemRef `json:"items"`
+	Items    []ItemRef `json:"items"`
+	AvgPlace float64   `json:"avgPlace,omitempty"` // Arena
 	Count
 }
 
@@ -89,7 +90,11 @@ type Build struct {
 	Rank       int              `json:"rank,omitempty"`
 	PickRate   float64          `json:"pickRate,omitempty"`
 	Augments   []Augment        `json:"augments,omitempty"`
-	AugScope   string           `json:"augScope,omitempty"` // champion | global
+	AugScope   string           `json:"augScope,omitempty"`  // champion | global
+	Prismatic  []ItemSet        `json:"prismatic,omitempty"` // Arena prismatic items
+	Synergies  []Synergy        `json:"synergies,omitempty"` // Arena partners
+	AvgPlace   float64          `json:"avgPlace,omitempty"`  // Arena
+	Top1       float64          `json:"top1,omitempty"`      // Arena first-place rate
 	Notes      []string         `json:"notes"`
 }
 

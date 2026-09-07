@@ -73,6 +73,7 @@ type Player struct {
 	Level           int     `json:"level"`
 	Position        string  `json:"position"`
 	RespawnTimer    float64 `json:"respawnTimer"`
+	SkinID          int     `json:"skinID"`
 	RiotIDName      string  `json:"riotIdGameName"`
 	SummonerName    string  `json:"summonerName"`
 	Team            string  `json:"team"` // ORDER | CHAOS

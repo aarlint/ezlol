@@ -49,7 +49,9 @@ type Augment struct {
 	WinRate  float64 `json:"winRate"`
 	PickRate float64 `json:"pickRate"`
 	Games    int     `json:"games"`
-	Scope    string  `json:"scope"` // champion | global
+	Scope    string  `json:"scope"`              // champion | global
+	AvgPlace float64 `json:"avgPlace,omitempty"` // Arena: average placement (lower is better)
+	Top1     float64 `json:"top1,omitempty"`     // Arena: first-place rate
 }
 
 // fetch GETs a URL with a browser-ish UA, caching the body for ttl.
@@ -439,4 +441,347 @@ func rarityRank(r string) int {
 	default:
 		return 4
 	}
+}
+
+// ---- Arena (op.gg per-champion + blitz global augment stats) ----
+
+type opggPlace struct {
+	IDs        []int   `json:"ids"`
+	Play       int     `json:"play"`
+	Win        int     `json:"win"`
+	TotalPlace int     `json:"total_place"`
+	FirstPlace int     `json:"first_place"`
+	PickRate   float64 `json:"pick_rate"`
+}
+
+type opggArena struct {
+	Meta struct {
+		Version string `json:"version"`
+	} `json:"meta"`
+	Data struct {
+		Summary struct {
+			AverageStats struct {
+				Play       int     `json:"play"`
+				Win        int     `json:"win"`
+				TotalPlace int     `json:"total_place"`
+				FirstPlace int     `json:"first_place"`
+				PickRate   float64 `json:"pick_rate"`
+				Tier       int     `json:"tier"`
+				Rank       int     `json:"rank"`
+			} `json:"average_stats"`
+		} `json:"summary"`
+		CoreItems    []opggPlace `json:"core_items"`
+		Boots        []opggPlace `json:"boots"`
+		StarterItems []opggPlace `json:"starter_items"`
+		LastItems    []opggPlace `json:"last_items"`
+		PrismItems   []opggPlace `json:"prism_items"`
+		Skills       []struct {
+			Order      []string `json:"order"`
+			Play       int      `json:"play"`
+			Win        int      `json:"win"`
+			TotalPlace int      `json:"total_place"`
+		} `json:"skills"`
+		SkillMasteries []struct {
+			IDs  []string `json:"ids"`
+			Play int      `json:"play"`
+			Win  int      `json:"win"`
+		} `json:"skill_masteries"`
+		AugmentGroup []struct {
+			Rarity   int `json:"rarity"`
+			Augments []struct {
+				ID         int     `json:"id"`
+				Win        int     `json:"win"`
+				Play       int     `json:"play"`
+				TotalPlace int     `json:"total_place"`
+				FirstPlace int     `json:"first_place"`
+				PickRate   float64 `json:"pick_rate"`
+			} `json:"augments"`
+		} `json:"augment_group"`
+		Synergies []struct {
+			ChampionID int     `json:"champion_id"`
+			Play       int     `json:"play"`
+			Win        int     `json:"win"`
+			TotalPlace int     `json:"total_place"`
+			FirstPlace int     `json:"first_place"`
+			PickRate   float64 `json:"pick_rate"`
+		} `json:"synergies"`
+	} `json:"data"`
+}
+
+// Synergy is a partner champion that places well with this one.
+type Synergy struct {
+	Champion ddragon.Champion `json:"champion"`
+	Games    int              `json:"games"`
+	WinRate  float64          `json:"winRate"`
+	AvgPlace float64          `json:"avgPlace"`
+	Top1     float64          `json:"top1"`
+}
+
+func (c *Community) arenaRaw(ctx context.Context, champID int) (*opggArena, error) {
+	url := fmt.Sprintf("https://lol-api-champion.op.gg/api/global/champions/arena/%d?tier=all", champID)
+	b, err := c.fetch(ctx, fmt.Sprintf("opgg-arena-%d.json", champID), url, 3*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	var r opggArena
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, fmt.Errorf("op.gg arena: %w", err)
+	}
+	return &r, nil
+}
+
+// ArenaBuild returns the op.gg Arena build for a champion.
+func (c *Community) ArenaBuild(ctx context.Context, d *ddragon.Data, champ ddragon.Champion) (*Build, error) {
+	r, err := c.arenaRaw(ctx, champ.ID)
+	if err != nil {
+		return nil, err
+	}
+	item := func(id int) ItemRef {
+		it := d.Items[id]
+		return ItemRef{ID: id, Name: it.Name, Image: it.Image}
+	}
+	sets := func(rows []opggPlace, n int, skip map[int]bool) []ItemSet {
+		var out []ItemSet
+		for _, row := range rows {
+			if len(out) >= n {
+				break
+			}
+			s := ItemSet{Count: Count{Games: row.Play, Wins: row.Win}}
+			if row.Play > 0 {
+				s.AvgPlace = float64(row.TotalPlace) / float64(row.Play)
+			}
+			for _, id := range row.IDs {
+				if id == 0 || skip[id] {
+					continue
+				}
+				s.Items = append(s.Items, item(id))
+			}
+			if len(s.Items) > 0 {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	st := r.Data.Summary.AverageStats
+	out := &Build{Champion: champ, Patch: r.Meta.Version + "-arena", Role: "NONE", Mode: "arena", Source: "opgg",
+		Total: Count{Games: st.Play, Wins: st.Win}, Tier: st.Tier, Rank: st.Rank, PickRate: st.PickRate}
+	if st.Play > 0 {
+		out.AvgPlace = float64(st.TotalPlace) / float64(st.Play)
+		out.Top1 = float64(st.FirstPlace) / float64(st.Play)
+	}
+	out.Starting = sets(r.Data.StarterItems, 3, nil)
+	out.Core = sets(r.Data.CoreItems, 4, nil)
+	out.Boots = sets(r.Data.Boots, 3, nil)
+	inCore := map[int]bool{}
+	for _, cs := range out.Core[:min(1, len(out.Core))] {
+		for _, it := range cs.Items {
+			inCore[it.ID] = true
+		}
+	}
+	out.Late = sets(r.Data.LastItems, 8, inCore)
+	out.Prismatic = sets(r.Data.PrismItems, 8, nil)
+	for i, sm := range r.Data.SkillMasteries {
+		if i >= 3 {
+			break
+		}
+		out.SkillOrder = append(out.SkillOrder, Skills{Order: strings.Join(sm.IDs, ">"), Count: Count{Games: sm.Play, Wins: sm.Win}})
+	}
+	if len(r.Data.Skills) > 0 {
+		out.SkillPath = r.Data.Skills[0].Order
+	}
+	for i, sy := range r.Data.Synergies {
+		if i >= 8 {
+			break
+		}
+		ch, ok := d.Champions[sy.ChampionID]
+		if !ok || sy.Play == 0 {
+			continue
+		}
+		out.Synergies = append(out.Synergies, Synergy{Champion: ch, Games: sy.Play, WinRate: float64(sy.Win) / float64(sy.Play),
+			AvgPlace: float64(sy.TotalPlace) / float64(sy.Play), Top1: float64(sy.FirstPlace) / float64(sy.Play)})
+	}
+	return out, nil
+}
+
+type blitzArenaAug struct {
+	Tier     int
+	AvgPlace float64
+	Top1     float64
+	Games    int
+	Stages   map[int]struct {
+		Tier     int
+		AvgPlace float64
+	}
+}
+
+// arenaGlobal loads blitz's global Arena augment stats (tier, avg placement, per stage).
+func (c *Community) arenaGlobal(ctx context.Context) map[int]blitzArenaAug {
+	out := map[int]blitzArenaAug{}
+	b, err := c.fetch(ctx, "blitz-arena-augments.json", "https://data.v2.iesdev.com/api/v1/query_objects/prod/lol/arena_augments", 6*time.Hour)
+	if err != nil {
+		return out
+	}
+	var doc struct {
+		Data []struct {
+			AugmentID string `json:"augment_id"`
+			Stats     struct {
+				Tier         int     `json:"tier"`
+				AvgPlacement float64 `json:"avg_placement"`
+				Top1         float64 `json:"top_1_percent"`
+				NumGames     int     `json:"num_games"`
+				Stages       []struct {
+					Stage        string  `json:"augment_stage"`
+					Tier         int     `json:"tier"`
+					AvgPlacement float64 `json:"avg_placement"`
+				} `json:"augment_stage_stats"`
+			} `json:"stats"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(b, &doc) != nil {
+		return out
+	}
+	for _, row := range doc.Data {
+		a := blitzArenaAug{Tier: row.Stats.Tier, AvgPlace: row.Stats.AvgPlacement, Top1: row.Stats.Top1, Games: row.Stats.NumGames,
+			Stages: map[int]struct {
+				Tier     int
+				AvgPlace float64
+			}{}}
+		for _, st := range row.Stats.Stages {
+			a.Stages[atoi(st.Stage)] = struct {
+				Tier     int
+				AvgPlace float64
+			}{st.Tier, st.AvgPlacement}
+		}
+		out[atoi(row.AugmentID)] = a
+	}
+	return out
+}
+
+// arenaMeta loads Arena augment names/descriptions from blitz (keyed by id) and
+// icons/rarity from CommunityDragon.
+func (c *Community) arenaMeta(ctx context.Context, patch string) *augmentMeta {
+	m := c.loadMeta(ctx, patch) // CDragon names/icons/rarity cover Arena ids too
+	if b, err := c.fetch(ctx, "blitz-arena-meta-"+patch+".json", "https://utils.iesdev.com/static/json/lol/arena/"+patch+"/augments_en_us", 24*time.Hour); err == nil {
+		var rows map[string]struct {
+			ID          int    `json:"id"`
+			DisplayName string `json:"displayName"`
+			Description string `json:"description"`
+		}
+		if json.Unmarshal(b, &rows) == nil {
+			c.mu.Lock()
+			for _, r := range rows {
+				if r.Description != "" {
+					m.descs[r.ID] = stripTags(r.Description)
+				}
+				if m.names[r.ID] == "" {
+					m.names[r.ID] = r.DisplayName
+				}
+			}
+			c.mu.Unlock()
+		}
+	}
+	return m
+}
+
+// ArenaAugments returns Arena augment stats for a champion (op.gg, champion-specific)
+// merged with blitz global tiers; sorted by rarity then average placement.
+func (c *Community) ArenaAugments(ctx context.Context, patch string, champID int) ([]Augment, string, error) {
+	meta := c.arenaMeta(ctx, patch)
+	global := c.arenaGlobal(ctx)
+	var out []Augment
+	scope := "champion"
+	if r, err := c.arenaRaw(ctx, champID); err == nil {
+		for _, g := range r.Data.AugmentGroup {
+			for _, a := range g.Augments {
+				if a.Play == 0 {
+					continue
+				}
+				aug := Augment{ID: a.ID, Name: meta.names[a.ID], Desc: meta.descs[a.ID], Rarity: meta.rarity[a.ID], Icon: meta.icons[a.ID],
+					WinRate: float64(a.Win) / float64(a.Play), PickRate: a.PickRate, Games: a.Play, Scope: scope,
+					AvgPlace: float64(a.TotalPlace) / float64(a.Play), Top1: float64(a.FirstPlace) / float64(a.Play)}
+				if gb, ok := global[a.ID]; ok {
+					aug.Tier = gb.Tier
+				}
+				if aug.Rarity == "" {
+					aug.Rarity = map[int]string{1: "silver", 2: "gold", 3: "prismatic"}[g.Rarity]
+				}
+				out = append(out, aug)
+			}
+		}
+	}
+	if len(out) == 0 {
+		scope = "global"
+		for id, gb := range global {
+			out = append(out, Augment{ID: id, Name: meta.names[id], Desc: meta.descs[id], Rarity: meta.rarity[id], Icon: meta.icons[id],
+				Tier: gb.Tier, AvgPlace: gb.AvgPlace, Top1: gb.Top1, Games: gb.Games, Scope: scope})
+		}
+	}
+	for i := range out {
+		if out[i].Name == "" {
+			out[i].Name = "Augment " + strconv.Itoa(out[i].ID)
+		}
+		if out[i].Rarity == "" {
+			out[i].Rarity = "unknown"
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Rarity != out[j].Rarity {
+			return rarityRank(out[i].Rarity) < rarityRank(out[j].Rarity)
+		}
+		ai, aj := out[i].AvgPlace, out[j].AvgPlace
+		if ai == 0 {
+			ai = 9
+		}
+		if aj == 0 {
+			aj = 9
+		}
+		if ai != aj {
+			return ai < aj
+		}
+		return out[i].Games > out[j].Games
+	})
+	return out, scope, nil
+}
+
+// ArenaTier is a champion's standing in the Arena tier list.
+type ArenaTier struct {
+	Tier     int     `json:"tier"`
+	Rank     int     `json:"rank"`
+	AvgPlace float64 `json:"avgPlace"`
+	Top1     float64 `json:"top1"`
+	PickRate float64 `json:"pickRate"`
+}
+
+// ArenaTiers returns the op.gg Arena tier list keyed by champion id.
+func (c *Community) ArenaTiers(ctx context.Context) (map[int]ArenaTier, error) {
+	b, err := c.fetch(ctx, "opgg-arena-tiers.json", "https://lol-api-champion.op.gg/api/global/champions/arena", 3*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Data []struct {
+			ID           int `json:"id"`
+			AverageStats struct {
+				Play       int     `json:"play"`
+				TotalPlace int     `json:"total_place"`
+				FirstPlace int     `json:"first_place"`
+				PickRate   float64 `json:"pick_rate"`
+				Tier       int     `json:"tier"`
+				Rank       int     `json:"rank"`
+			} `json:"average_stats"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return nil, fmt.Errorf("op.gg arena tiers: %w", err)
+	}
+	out := map[int]ArenaTier{}
+	for _, row := range doc.Data {
+		if row.ID > 10000 || row.AverageStats.Play == 0 { // op.gg lists variant ids above 60000
+			continue
+		}
+		st := row.AverageStats
+		out[row.ID] = ArenaTier{Tier: st.Tier, Rank: st.Rank, PickRate: st.PickRate,
+			AvgPlace: float64(st.TotalPlace) / float64(st.Play), Top1: float64(st.FirstPlace) / float64(st.Play)}
+	}
+	return out, nil
 }
