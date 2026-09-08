@@ -543,6 +543,8 @@ body.electron .topbar { -webkit-app-region: drag; padding-left: 84px; min-height
 /* Dashboard: gridstack 12-column grid; each box is a widget the user can move and size in edit mode. */
 .layout .main { min-height: 100%; }
 .grid-stack-item-content.panel { overflow-x: hidden; overflow-y: auto; }
+/* Feeds that pin the newest entry on top clip at the bottom instead of scrolling */
+.grid-stack-item.noscroll .grid-stack-item-content.panel { overflow-y: hidden; }
 /* Natural-height wrapper: measured for auto-sizing; stretches to the box so feeds can fill it. */
 .wcontent { display: flex; flex-direction: column; min-height: 100%; }
 .wcontent.measuring { min-height: 0; }
