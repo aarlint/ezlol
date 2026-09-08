@@ -522,8 +522,9 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 .pname { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pname .muted { font-weight: 400; font-size: 11px; }
 .kda { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
-.items { display: flex; gap: 2px; }
-.items img { width: 24px; height: 24px; border: 1px solid var(--gold-deep); }
+.items { display: flex; gap: 2px; flex-wrap: wrap; }
+/* Item icons match the portrait height so the build reads at a glance. */
+.items img { width: 44px; height: 44px; border: 1px solid var(--gold-deep); }
 .spells { display: flex; gap: 3px; }
 .spells img { width: 26px; height: 26px; border: 1px solid var(--gold-deep); display: block; }
 .spell { position: relative; padding: 0; border: 0; background: none; box-shadow: none; }
