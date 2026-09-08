@@ -52,7 +52,22 @@ const myself = computed(() => live.value?.players?.find((p) => p.isMe))
 // Item purchase feed: diff each player's inventory between polls.
 interface Buy { t: number; who: string; champ: string; item: string; image: string; enemy: boolean; stats?: string[] }
 const buys = ref<Buy[]>(loadBuys())
-const buysNewest = computed(() => [...buys.value].reverse())
+// The Shopping box lists purchases top-down in the order they happen and never
+// scrolls: it shows as many of the latest as fit, and the oldest drop off the top.
+const buysEl = ref<HTMLElement | null>(null)
+const buysFit = ref(6)
+const buysRO = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(([e]) => {
+  const el = e.target as HTMLElement
+  const row = el.querySelector<HTMLElement>('.buy')
+  const rowH = row ? row.offsetHeight + 4 : 58 // 4px margin between rows
+  buysFit.value = Math.max(1, Math.floor((el.clientHeight + 4) / rowH))
+})
+watch(buysEl, (el, old) => {
+  if (old) buysRO?.unobserve(old)
+  if (el) buysRO?.observe(el)
+})
+onUnmounted(() => buysRO?.disconnect())
+const visibleBuys = computed(() => buys.value.slice(-buysFit.value))
 const lastItems: Record<string, Set<number>> = {}
 function loadBuys(): Buy[] {
   try {
@@ -449,9 +464,9 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
     <!-- Shopping -->
     <Widget id="live-shopping" :w="3" class="noscroll">
       <h2>Shopping</h2>
-      <!-- Newest purchase on top; the box clips instead of scrolling -->
-      <div class="log buys">
-        <div v-for="(b, i) in buysNewest" :key="buys.length - i" class="buy" :class="{ enemy: b.enemy }" :title="`${b.champ} bought ${b.item} at ${fmtTime(b.t)}`">
+      <!-- Top-down in purchase order; the oldest drop off when the box is full, never scrolls -->
+      <div ref="buysEl" class="log buys">
+        <div v-for="(b, i) in visibleBuys" :key="buys.length - visibleBuys.length + i" class="buy" :class="{ enemy: b.enemy }" :title="`${b.champ} bought ${b.item} at ${fmtTime(b.t)}`">
           <img :src="b.image" :alt="b.item" />
           <div class="buy-body">
             <div class="buy-who">{{ b.champ }}<span class="t">{{ fmtTime(b.t) }}</span></div>
@@ -546,6 +561,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 .threat i { display: block; height: 100%; background: linear-gradient(90deg, var(--amber), var(--red)); }
 .buy-img { width: 16px; height: 16px; vertical-align: -3px; border: 1px solid var(--gold-deep); }
 /* Shopping feed: big item icon, who bought it, what it bumps */
+.buys { flex: 1; min-height: 0; overflow: hidden; }
 .buy { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: center; padding: 4px 6px; margin-bottom: 4px; border: 1px solid var(--line); background: var(--surface-raised); }
 .buy.enemy { border-color: color-mix(in srgb, var(--red) 45%, transparent); }
 .buy img { width: 44px; height: 44px; border: 1px solid var(--gold-deep); background: #000; }
