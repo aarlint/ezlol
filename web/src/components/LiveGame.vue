@@ -52,6 +52,7 @@ const myself = computed(() => live.value?.players?.find((p) => p.isMe))
 // Item purchase feed: diff each player's inventory between polls.
 interface Buy { t: number; who: string; champ: string; item: string; image: string; enemy: boolean; stats?: string[] }
 const buys = ref<Buy[]>(loadBuys())
+const buysNewest = computed(() => [...buys.value].reverse())
 const lastItems: Record<string, Set<number>> = {}
 function loadBuys(): Buy[] {
   try {
@@ -446,10 +447,11 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
     </Widget>
 
     <!-- Shopping -->
-    <Widget id="live-shopping" :w="3">
+    <Widget id="live-shopping" :w="3" class="noscroll">
       <h2>Shopping</h2>
-      <div class="log buys" v-autoscroll>
-        <div v-for="(b, i) in buys" :key="i" class="buy" :class="{ enemy: b.enemy }" :title="`${b.champ} bought ${b.item} at ${fmtTime(b.t)}`">
+      <!-- Newest purchase on top; the box clips instead of scrolling -->
+      <div class="log buys">
+        <div v-for="(b, i) in buysNewest" :key="buys.length - i" class="buy" :class="{ enemy: b.enemy }" :title="`${b.champ} bought ${b.item} at ${fmtTime(b.t)}`">
           <img :src="b.image" :alt="b.item" />
           <div class="buy-body">
             <div class="buy-who">{{ b.champ }}<span class="t">{{ fmtTime(b.t) }}</span></div>
