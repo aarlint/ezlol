@@ -517,6 +517,7 @@ input:focus, select:focus { border-color: var(--gold); box-shadow: var(--shadow-
 
 .app { max-width: none; margin: 0 auto; padding: 10px 12px; display: grid; gap: 10px; height: 100vh; box-sizing: border-box; grid-template-rows: auto auto 1fr; overflow: hidden; }
 .layout { min-height: 0; overflow: auto; }
+.bars { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .app:has(.layout.game), .app:has(.layout.select) { max-width: none; padding: 10px 12px; gap: 10px; }
 .topbar { -webkit-app-region: drag; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 14px; border-bottom: 1px solid var(--gold-deep); position: relative; z-index: 10; /* above the champion bar so its dropdowns (theme menu) overlay it */ }
 .topbar button, .topbar .toggle, .topbar .pill, .topbar label, .topbar .tm { -webkit-app-region: no-drag; position: relative; z-index: 1; }

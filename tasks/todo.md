@@ -31,6 +31,8 @@
 
 - [x] Desktop settings: Launch at login + Start in the tray / menu bar (tray menu, hide-to-tray on close, single instance); Settings button is a gear icon
 
+- [x] Champ select is one fixed strip under the champion bar (team / enemies / bench), only during champion select; select grid holds the build only
+
 ## Next
 - [ ] Verify Launch at login on a packaged build (login item only registers when app.isPackaged)
 - [x] v1.0.8 and v1.0.9 released 2026-09-07 (all jobs green)

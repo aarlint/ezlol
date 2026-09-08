@@ -230,14 +230,17 @@ async function toggleAuto() {
     <Toasts />
     <SettingsModal v-if="showSettings" @close="showSettings = false" />
 
-    <!-- Champion card: fixed bar with the champion picker as a dropdown, never part of the grid below -->
-    <ChampionBar :champion="selected" :champions="champions" :status="status" :screen="mode" :compact="mode === 'game'" v-model:follow="followPick" @select="select" />
+    <!-- Fixed bars, never part of the grid below: the champion card (with the picker
+         as a dropdown) and, only during champion select, the champ select strip -->
+    <div class="bars">
+      <ChampionBar :champion="selected" :champions="champions" :status="status" :screen="mode" :compact="mode === 'game'" v-model:follow="followPick" @select="select" />
+      <ChampSelect v-if="mode === 'select'" @preview="select" />
+    </div>
 
     <div class="layout" :class="mode">
       <div ref="mainEl" :key="modeKey + ':' + layoutVersion" class="main grid-stack" :class="[mode, { editing }]">
         <QueuePanel v-if="mode === 'idle'" :status="status" :logs="logs" @select="select" />
         <EndOfGame v-if="mode === 'idle'" />
-        <ChampSelect v-if="mode === 'select'" @preview="select" />
         <!-- In game: live boxes first, build boxes flow in after them -->
         <LiveGame v-if="mode === 'game'" @me="(c) => followPick && select(c)" />
         <BuildPanel :status="status" :compact="mode === 'game'" />
