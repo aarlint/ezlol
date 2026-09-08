@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import Widget from './Widget.vue'
+// Champ select bar: one fixed strip under the champion bar, only while the
+// client is in champion select. Your team (trades), enemies, bench (swap /
+// reroll) and the comp read-outs sit side by side; never part of the grid.
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, fmtPoints } from '../api'
 import * as sound from '../sound'
@@ -13,7 +15,6 @@ const emit = defineEmits<{ preview: [c: Champion] }>()
 const autoRunes = ref(localStorage.getItem('ezlol.autoRunes') === 'on')
 watch(autoRunes, (v) => localStorage.setItem('ezlol.autoRunes', v ? 'on' : 'off'))
 let appliedFor = 0
-const runeMsg = ref('')
 async function maybeApplyRunes(c: ChampSelect) {
   const id = c.me?.champion.id
   if (!autoRunes.value || !id || id === appliedFor) return
@@ -37,7 +38,6 @@ const tierLetter = (id: number) => {
   return t ? `${['', 'S', 'A', 'B', 'C', 'D'][t.tier] ?? t.tier} · #${t.avgPlace.toFixed(2)}` : ''
 }
 const busy = ref(false)
-const err = ref('')
 let timer: number | undefined
 
 let tradePinged = false
@@ -57,7 +57,7 @@ async function poll() {
       tradePinged = true
       sound.alert()
       sound.notify('ezlol', 'Trade request received')
-      toast({ key: 'trade', kind: 'warn', title: 'Trade request', body: 'A teammate wants to swap — Accept is in the champ select box.', ttl: 15000 })
+      toast({ key: 'trade', kind: 'warn', title: 'Trade request', body: 'A teammate wants to swap — Accept is in the champ select bar.', ttl: 15000 })
     }
     if (!received) tradePinged = false
     if (c.active && c.timeLeft > 0 && c.timeLeft <= 10 && !timerPinged) {
@@ -77,13 +77,11 @@ onUnmounted(() => clearInterval(timer))
 
 async function act(fn: () => Promise<unknown>) {
   busy.value = true
-  err.value = ''
   try {
     await fn()
     await poll()
   } catch (e) {
-    err.value = (e as Error).message
-    toast({ key: 'cs', kind: 'error', title: 'Champ select action failed', body: err.value })
+    toast({ key: 'cs', kind: 'error', title: 'Champ select action failed', body: (e as Error).message })
   } finally {
     busy.value = false
   }
@@ -103,14 +101,20 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
 </script>
 
 <template>
-  <template v-if="cs?.active">
-    <Widget id="cs-team" :w="4">
-      <h2>Champ select <span class="muted" style="margin-left: 8px">{{ cs.mode === 'aram' ? 'ARAM' : cs.phase }} · {{ cs.timeLeft }}s</span>
-        <label class="toggle" :class="{ on: autoRunes }" style="margin-left: auto" title="Set Riot's recommended rune page automatically for the champion you get" @click="autoRunes = !autoRunes"><span class="track" /><span>Auto runes</span></label>
-      </h2>
-      <h3>Your team</h3>
+  <section v-if="cs?.active" class="panel csbar" aria-label="Champ select">
+    <div class="cs-head">
+      <div class="cs-title">Champ select</div>
+      <div class="cs-sub">{{ cs.mode === 'aram' ? 'ARAM' : cs.mode === 'arena' ? 'Arena' : cs.phase }}</div>
+      <div class="cs-timer" :class="{ urgent: cs.timeLeft > 0 && cs.timeLeft <= 10 }">{{ cs.timeLeft }}s</div>
+      <button type="button" role="switch" class="toggle" :class="{ on: autoRunes }" :aria-checked="autoRunes" title="Set Riot's recommended rune page automatically for the champion you get" @click="autoRunes = !autoRunes">
+        <span class="track" aria-hidden="true" /><span>Auto runes</span>
+      </button>
+    </div>
+
+    <div class="group">
+      <div class="g-label">Your team</div>
       <div class="team">
-        <div v-for="p in cs.myTeam ?? []" :key="p.name + p.champion.id" class="cs-player" :class="{ me: p.isMe }" @click="p.champion.id && emit('preview', p.champion)">
+        <div v-for="p in cs.myTeam ?? []" :key="p.name + p.champion.id" class="cs-player" :class="{ me: p.isMe }" :title="p.name" @click="p.champion.id && emit('preview', p.champion)">
           <img v-if="p.champion.image" :src="p.champion.image" :alt="p.champion.name" />
           <div v-else class="empty" />
           <div class="cname">{{ p.champion.name || '…' }}</div>
@@ -125,12 +129,12 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
       <div v-if="cs.allyProfile.hint" class="profile">
         <div class="bar"><div :style="{ width: pct(cs.allyProfile) + '%' }" /></div>
         <span class="muted">AD {{ pct(cs.allyProfile) }}% · AP {{ 100 - pct(cs.allyProfile) }}% · {{ comp(cs.allyComp) }}</span>
-        <div v-if="cs.allyComp.needs?.length" class="hint">Comp is missing: {{ cs.allyComp.needs.join(', ') }}</div>
+        <span v-if="cs.allyComp.needs?.length" class="hint">missing: {{ cs.allyComp.needs.join(', ') }}</span>
       </div>
-    </Widget>
+    </div>
 
-    <Widget v-if="cs.theirTeam?.length" id="cs-enemies" :w="4">
-      <h2>Enemies</h2>
+    <div v-if="cs.theirTeam?.length" class="group">
+      <div class="g-label">Enemies</div>
       <div class="team">
         <div v-for="c in cs.theirTeam" :key="c.id" class="cs-player" @click="emit('preview', c)">
           <img :src="c.image" :alt="c.name" />
@@ -140,15 +144,16 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
       <div class="profile">
         <div class="bar"><div :style="{ width: pct(cs.enemyProfile) + '%' }" /></div>
         <span class="muted">AD {{ pct(cs.enemyProfile) }}% · AP {{ 100 - pct(cs.enemyProfile) }}% · {{ comp(cs.enemyComp) }}</span>
-        <div class="hint">{{ cs.enemyProfile.hint }}</div>
+        <span class="hint">{{ cs.enemyProfile.hint }}</span>
       </div>
-    </Widget>
+    </div>
 
-    <Widget v-if="cs.benchEnabled" id="cs-bench" :w="4">
-      <h2>Bench
-        <button class="primary" style="margin-left: auto" :disabled="busy || cs.rerollsRemaining <= 0" @click="act(api.reroll)">Reroll ({{ cs.rerollsRemaining }})</button>
-      </h2>
-      <div class="team" v-if="cs.bench?.length">
+    <div v-if="cs.benchEnabled" class="group">
+      <div class="g-label">
+        Bench
+        <button class="primary sm" :disabled="busy || cs.rerollsRemaining <= 0" @click="act(api.reroll)">Reroll ({{ cs.rerollsRemaining }})</button>
+      </div>
+      <div v-if="cs.bench?.length" class="team">
         <div v-for="(b, i) in cs.bench" :key="b.champion.id" class="cs-player bench" :class="{ hot: i === 0 && b.score >= 20 }" :title="b.why">
           <img :src="b.champion.image" :alt="b.champion.name" @click="emit('preview', b.champion)" />
           <div class="cname">{{ b.champion.name }}</div>
@@ -158,26 +163,38 @@ const mast = (m?: Mastery) => (m ? `M${m.championLevel} · ${fmtPoints(m.champio
         </div>
       </div>
       <div v-else class="muted">Bench is empty. Reroll or wait for teammates to trade.</div>
-      <div v-if="rerollHint(cs)" class="hint" style="margin-top: 6px">{{ rerollHint(cs) }}</div>
-    </Widget>
-  </template>
+      <div v-if="rerollHint(cs)" class="hint">{{ rerollHint(cs) }}</div>
+    </div>
+  </section>
 </template>
 
-
 <style scoped>
-.team { display: flex; gap: 8px; flex-wrap: wrap; }
-.cs-player { width: 96px; text-align: center; cursor: pointer; padding: 6px; border: 1px solid var(--line); background: var(--surface-raised); }
+.csbar { display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap; padding: 8px 14px; }
+.cs-head { display: flex; flex-direction: column; gap: 2px; min-width: 120px; align-self: stretch; justify-content: center; }
+.cs-title { font-family: var(--display); font-size: 13px; letter-spacing: var(--label-spacing); text-transform: var(--label-transform); color: var(--h2-color); }
+.cs-sub { font-size: 11px; color: var(--muted); }
+.cs-timer { font-family: var(--display); font-size: 22px; font-weight: 700; color: var(--gold-bright); line-height: 1.1; }
+.cs-timer.urgent { color: var(--red); }
+.cs-head .toggle { padding: 0 6px 0 0; min-height: 0; background: none; box-shadow: none; border-color: transparent; margin-top: 4px; justify-content: flex-start; }
+.group { display: flex; flex-direction: column; gap: 6px; padding-left: 16px; border-left: 1px solid var(--gold-deep); min-width: 0; }
+.g-label { font-family: var(--display); font-size: 11px; letter-spacing: var(--label-spacing); text-transform: var(--label-transform); color: var(--h3-color); display: flex; align-items: center; gap: 10px; min-height: 22px; }
+.g-label button.sm { padding: 2px 8px; font-size: 10px; min-height: 0; }
+.team { display: flex; gap: 6px; flex-wrap: wrap; }
+.cs-player { width: 82px; text-align: center; cursor: pointer; padding: 4px; border: 1px solid var(--line); background: var(--surface-raised); }
 .cs-player.me { border-color: var(--hextech-dim); background: var(--accent-soft); }
 .cs-player.hot { border-color: var(--gold); box-shadow: 0 0 10px var(--gold-glow); }
-.cs-player img, .cs-player .empty { width: 56px; height: 56px; border: 1px solid var(--gold-dark); display: block; margin: 0 auto 4px; }
+.cs-player img, .cs-player .empty { width: 44px; height: 44px; border: 1px solid var(--gold-dark); display: block; margin: 0 auto 3px; }
 .cs-player .empty { background: var(--surface-input); }
 .cs-player:hover img { border-color: var(--gold); }
-.cname { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cname { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cs-player .muted { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rec { font-size: 10px; color: var(--hextech-2); font-family: var(--display); }
-.cs-player button { margin-top: 4px; padding: 3px 8px; font-size: 10px; width: 100%; }
-.profile { margin-top: 8px; }
-.bar { height: 6px; background: #3b2fbf; border: 1px solid var(--gold-deep); overflow: hidden; }
+.cs-player button { margin-top: 3px; padding: 2px 6px; font-size: 10px; width: 100%; min-height: 0; }
+/* width: 0 + min-width: 100%: the read-out wraps under the portraits instead of
+   widening the group (a long hint would otherwise push the next group onto a new row). */
+.profile { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; width: 0; min-width: 100%; }
+.profile .muted { font-size: 11px; }
+.bar { width: 110px; height: 6px; background: #3b2fbf; border: 1px solid var(--gold-deep); overflow: hidden; flex: none; }
 .bar div { height: 100%; background: #c8452a; }
-.hint { color: var(--gold); font-size: 12px; margin-top: 2px; }
+.hint { color: var(--gold); font-size: 11px; }
 </style>

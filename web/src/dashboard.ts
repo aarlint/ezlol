@@ -37,11 +37,11 @@ const LIVE_RIGHT: Record<string, Pos> = { 'live-you': P(9, 0, 3, 8), 'live-shopp
 const BUILD_UNDER_TEAMS: Record<string, Pos> = { items: P(3, 20, 3, 12), runes: P(6, 20, 3, 12), spells: P(3, 32, 3, 10), boots: P(6, 32, 3, 12) }
 export const DEFAULT_LAYOUTS: Record<ModeKey, Record<string, Pos>> = {
   idle: { queue: P(0, 0, 3, 18), compile: P(0, 18, 3, 6), postgame: P(3, 24, 6, 12), ...BUILD_IDLE },
+  // Champ select itself is a fixed bar above the grid; the grid holds the build.
   select: {
-    'cs-team': P(0, 0, 4, 9), 'cs-enemies': P(4, 0, 4, 9), 'cs-bench': P(8, 0, 4, 9),
-    items: P(0, 9, 3, 12), boots: P(3, 9, 3, 12), runes: P(6, 9, 3, 12), spells: P(9, 9, 3, 12),
-    'aug-prismatic': P(0, 21, 3, 9), 'aug-gold': P(3, 21, 3, 9), 'aug-silver': P(6, 21, 3, 9),
-    prismatic: P(9, 21, 3, 10), synergies: P(9, 31, 3, 10),
+    items: P(0, 0, 3, 12), boots: P(3, 0, 3, 12), runes: P(6, 0, 3, 12), spells: P(9, 0, 3, 12),
+    'aug-prismatic': P(0, 12, 3, 9), 'aug-gold': P(3, 12, 3, 9), 'aug-silver': P(6, 12, 3, 9),
+    prismatic: P(9, 12, 3, 10), synergies: P(9, 22, 3, 10),
   },
   'game-rift': {
     'live-status': P(0, 0, 3, 8), 'live-objectives': P(0, 8, 3, 9), 'live-matchup': P(0, 17, 3, 9),
@@ -98,9 +98,6 @@ export const CATALOG: Record<ModeKey, WidgetSpec[]> = {
     { id: 'compile', title: 'Build data', w: 3, h: 6 },
   ],
   select: [
-    { id: 'cs-team', title: 'Champ select · your team', w: 4, h: 9 },
-    { id: 'cs-enemies', title: 'Champ select · enemies', w: 4, h: 9, when: 'once enemy picks are visible' },
-    { id: 'cs-bench', title: 'Bench', w: 4, h: 9, when: 'ARAM' },
     ...BUILD_WIDGETS,
     ...AUG_WIDGETS.map((w) => ({ ...w, when: 'ARAM / Arena' })),
     ...ARENA_BUILD.map((w) => ({ ...w, when: 'Arena' })),
