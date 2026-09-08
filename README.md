@@ -99,6 +99,13 @@ hours; ezlol respects both limits and backs off on 429. A 200-match run is rough
 Static data (champion, item, rune and spell names and images) comes from Data Dragon and is cached under
 `ddragon/<version>/` in the data directory. It is refreshed daily.
 
+## Augment ratings
+
+Augment boxes carry an S / A / B / C / D pip. The letter comes from ezlol's own ranking, not the data
+source: ARAM Mayhem augments are ordered by win rate (samples under 200 games are unrated and show
+`?`), Arena augments by average placement, and the letter is the augment's rank within its rarity
+(top 12 % S, next 23 % A, next 30 % B, next 20 % C, rest D). The order and the letter therefore always agree.
+
 ## Dashboard
 
 The champion card (portrait, Rift / ARAM / Arena and lane buttons, tier, your mastery and record, **Follow**)

@@ -438,7 +438,49 @@ func (c *Community) Augments(ctx context.Context, patch string, champID int) ([]
 		}
 		return a.WinRate > b.WinRate
 	})
+	rateAugments(out, func(a Augment) bool { return a.Games >= 200 })
 	return out, scope, nil
+}
+
+// rateAugments assigns S/A/B/C/D (Tier 1..5) from an augment's rank within its
+// rarity, so the letter always agrees with the order we show. Entries the
+// ranking cannot trust (thin sample, no placement data) get Tier 0: unknown.
+func rateAugments(out []Augment, trusted func(Augment) bool) {
+	groups := map[string][]int{}
+	var order []string
+	for i, a := range out {
+		if _, ok := groups[a.Rarity]; !ok {
+			order = append(order, a.Rarity)
+		}
+		groups[a.Rarity] = append(groups[a.Rarity], i)
+	}
+	for _, r := range order {
+		idx := groups[r]
+		var rated []int
+		for _, i := range idx {
+			if trusted(out[i]) {
+				rated = append(rated, i)
+			} else {
+				out[i].Tier = 0
+			}
+		}
+		n := float64(len(rated))
+		for pos, i := range rated {
+			p := float64(pos) / n
+			switch {
+			case p < 0.12:
+				out[i].Tier = 1
+			case p < 0.35:
+				out[i].Tier = 2
+			case p < 0.65:
+				out[i].Tier = 3
+			case p < 0.85:
+				out[i].Tier = 4
+			default:
+				out[i].Tier = 5
+			}
+		}
+	}
 }
 
 func rarityRank(r string) int {
@@ -753,6 +795,7 @@ func (c *Community) ArenaAugments(ctx context.Context, patch string, champID int
 		}
 		return out[i].Games > out[j].Games
 	})
+	rateAugments(out, func(a Augment) bool { return a.AvgPlace > 0 })
 	return out, scope, nil
 }
 
