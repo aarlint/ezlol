@@ -165,6 +165,8 @@ export interface LiveItem {
   name: string
   image: string
   count: number
+  /** stat bumps as labels: "+40 AD", "+300 HP" */
+  stats?: string[]
 }
 export interface LiveSpell {
   id: number

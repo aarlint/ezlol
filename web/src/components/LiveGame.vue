@@ -50,7 +50,7 @@ let announced = 0
 let respawnPinged = false
 const myself = computed(() => live.value?.players?.find((p) => p.isMe))
 // Item purchase feed: diff each player's inventory between polls.
-interface Buy { t: number; who: string; champ: string; item: string; image: string; enemy: boolean }
+interface Buy { t: number; who: string; champ: string; item: string; image: string; enemy: boolean; stats?: string[] }
 const buys = ref<Buy[]>(loadBuys())
 const lastItems: Record<string, Set<number>> = {}
 function loadBuys(): Buy[] {
@@ -74,7 +74,7 @@ function diffItems(prev: Live | null, next: Live) {
     if (before && prev) {
       for (const it of p.items ?? []) {
         if (it.image && !before.has(it.id) && !it.name.toLowerCase().includes('potion') && it.count <= 1) {
-          buys.value = [...buys.value, { t: next.gameTime, who: p.name, champ: p.champion.name, item: it.name, image: it.image, enemy: p.team !== next.myTeam }].slice(-30)
+          buys.value = [...buys.value, { t: next.gameTime, who: p.name, champ: p.champion.name, item: it.name, image: it.image, enemy: p.team !== next.myTeam, stats: it.stats ?? [] }].slice(-30)
           persistBuys()
         }
       }
@@ -448,10 +448,13 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
     <!-- Shopping -->
     <Widget id="live-shopping" :w="3">
       <h2>Shopping</h2>
-      <div class="log" v-autoscroll>
-        <div v-for="(b, i) in buys" :key="i" class="row" :class="{ error: b.enemy }">
-          <span class="t">{{ fmtTime(b.t) }}</span>
-          <span><img :src="b.image" class="buy-img" /> {{ b.champ }} bought {{ b.item }}</span>
+      <div class="log buys" v-autoscroll>
+        <div v-for="(b, i) in buys" :key="i" class="buy" :class="{ enemy: b.enemy }" :title="`${b.champ} bought ${b.item} at ${fmtTime(b.t)}`">
+          <img :src="b.image" :alt="b.item" />
+          <div class="buy-body">
+            <div class="buy-who">{{ b.champ }}<span class="t">{{ fmtTime(b.t) }}</span></div>
+            <div class="buy-stats">{{ b.stats?.length ? b.stats.join(' · ') : b.item }}</div>
+          </div>
         </div>
         <div v-if="!buys.length" class="muted">No purchases seen yet.</div>
       </div>
@@ -540,6 +543,15 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 .threat { width: 80px; height: 6px; background: var(--surface-input); border: 1px solid var(--gold-deep); overflow: hidden; }
 .threat i { display: block; height: 100%; background: linear-gradient(90deg, var(--amber), var(--red)); }
 .buy-img { width: 16px; height: 16px; vertical-align: -3px; border: 1px solid var(--gold-deep); }
+/* Shopping feed: big item icon, who bought it, what it bumps */
+.buy { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: center; padding: 4px 6px; margin-bottom: 4px; border: 1px solid var(--line); background: var(--surface-raised); }
+.buy.enemy { border-color: color-mix(in srgb, var(--red) 45%, transparent); }
+.buy img { width: 44px; height: 44px; border: 1px solid var(--gold-deep); background: #000; }
+.buy-body { min-width: 0; }
+.buy-who { font-weight: 600; font-size: 13px; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.buy.enemy .buy-who { color: var(--red); }
+.buy-who .t { font-weight: 400; font-size: 10px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.buy-stats { font-size: 12px; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .abil { display: flex; gap: 8px; font-family: var(--display); }
 .istats { margin-left: 6px; display: inline-flex; gap: 5px; font-size: 10px; }
 .istats b { font-weight: 600; }

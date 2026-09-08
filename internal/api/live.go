@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -38,10 +40,49 @@ type livePlayer struct {
 }
 
 type liveItem struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Image string `json:"image"`
-	Count int    `json:"count"`
+	ID    int      `json:"id"`
+	Name  string   `json:"name"`
+	Image string   `json:"image"`
+	Count int      `json:"count"`
+	Stats []string `json:"stats,omitempty"` // "+40 AD", "+300 HP", … in display order
+}
+
+// Stat bumps an item grants, as short labels, in the order players read them.
+// Data Dragon has no ability haste, so haste items show only their other stats.
+var statLabels = []struct {
+	key     string
+	label   string
+	percent bool
+}{
+	{"FlatPhysicalDamageMod", "AD", false},
+	{"FlatMagicDamageMod", "AP", false},
+	{"FlatHPPoolMod", "HP", false},
+	{"FlatMPPoolMod", "Mana", false},
+	{"FlatArmorMod", "Armor", false},
+	{"FlatSpellBlockMod", "MR", false},
+	{"PercentAttackSpeedMod", "AS", true},
+	{"FlatCritChanceMod", "Crit", true},
+	{"PercentLifeStealMod", "Lifesteal", true},
+	{"FlatMovementSpeedMod", "MS", false},
+	{"PercentMovementSpeedMod", "MS", true},
+	{"FlatHPRegenMod", "HP regen", false},
+	{"FlatMPRegenMod", "Mana regen", false},
+}
+
+func itemStats(stats map[string]float64) []string {
+	var out []string
+	for _, sl := range statLabels {
+		v, ok := stats[sl.key]
+		if !ok || v == 0 {
+			continue
+		}
+		if sl.percent {
+			out = append(out, fmt.Sprintf("%+d%% %s", int(math.Round(v*100)), sl.label))
+		} else {
+			out = append(out, fmt.Sprintf("%+d %s", int(math.Round(v)), sl.label))
+		}
+	}
+	return out
 }
 
 type liveSpell struct {
@@ -102,6 +143,7 @@ func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
 			if d != nil {
 				if dd, ok := d.Items[it.ID]; ok {
 					li.Image = dd.Image
+					li.Stats = itemStats(dd.Stats)
 					n := it.Count
 					if n < 1 {
 						n = 1
