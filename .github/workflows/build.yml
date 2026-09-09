@@ -106,6 +106,9 @@ jobs:
           if [[ "${{ matrix.goos }}" == "darwin" && -n "${CSC_LINK:-}" ]]; then
             extra="-c.mac.notarize=true"
             unset CSC_IDENTITY_AUTO_DISCOVERY
+          elif [[ "${{ matrix.goos }}" != "darwin" ]]; then
+            # The certificate is Apple's Developer ID; Windows must not try to sign with it.
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
           fi
           npx electron-builder ${{ matrix.eb }} --publish never $extra
       - uses: actions/upload-artifact@v4
