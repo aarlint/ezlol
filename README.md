@@ -124,15 +124,16 @@ nothing shifts mid-game. Boxes keep their exact positions; gaps are allowed.
 
 ## Installing on macOS
 
-Releases are not yet signed with a Developer ID, so the first launch needs right-click → **Open**. If macOS
-instead says the app is *damaged*, clear the quarantine flag and re-seal it, then open it normally:
+Releases from 1.0.11 on are signed with a Developer ID and notarized, so they open like any other app and
+update in place. Older, unsigned copies need right-click → **Open** once; if macOS says such a copy is
+*damaged*, clear the quarantine flag and re-seal it, then open it normally:
 
 ```bash
 xattr -cr /Applications/ezlol.app
 codesign --force --deep --sign - /Applications/ezlol.app
 ```
 
-See `docs/SIGNING.md` for signing and notarizing builds so none of this is needed.
+See `docs/SIGNING.md` for how the signing and notarization pipeline is set up.
 
 ## Desktop app
 
