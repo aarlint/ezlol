@@ -261,13 +261,24 @@ async function updatesEnabled() {
   })
 }
 
+/** True when this bundle carries a Developer ID signature (ad-hoc signed builds have a seal too, so check the authority). */
+function developerIdSigned() {
+  if (process.platform !== 'darwin' || !app.isPackaged) return false
+  try {
+    const appPath = path.resolve(process.resourcesPath, '..', '..')
+    const res = require('node:child_process').spawnSync('codesign', ['-dv', appPath], { encoding: 'utf8' })
+    return /Authority=Developer ID Application/.test(`${res.stdout || ''}${res.stderr || ''}`)
+  } catch {
+    return false
+  }
+}
+
 function setupUpdates() {
   if (!app.isPackaged) return
   const send = (payload) => win && win.webContents.send('update-state', payload)
   // Signed + notarized mac builds (CI with CSC_LINK) can use electron-updater like
-  // Windows; unsigned ones use our own download/verify/swap updater.
-  const signed = process.platform === 'darwin' && fs.existsSync(path.join(process.resourcesPath, '..', '_CodeSignature', 'CodeResources'))
-  if (process.platform === 'darwin' && !signed) {
+  // Windows; unsigned (ad-hoc signed) ones use our own download/verify/swap updater.
+  if (process.platform === 'darwin' && !developerIdSigned()) {
     macUpdater = new MacUpdater(send)
     const check = async () => {
       if (await updatesEnabled()) macUpdater.check()

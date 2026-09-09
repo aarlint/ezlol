@@ -16,7 +16,8 @@ exports.default = async function adhocSign(context) {
   if (context.electronPlatformName !== 'darwin') return
   const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
   if (process.env.CSC_LINK || process.env.CSC_NAME) return
-  const probe = spawnSync('codesign', ['-dv', appPath], { encoding: 'utf8' })
+  // Authority lines only show at verbosity 2 (-dvv); plain -dv would miss a real signature.
+  const probe = spawnSync('codesign', ['-dvv', appPath], { encoding: 'utf8' })
   if (/Authority=Developer ID Application/.test(`${probe.stdout}${probe.stderr}`)) return
   const res = spawnSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' })
   if (res.status !== 0) throw new Error(`ad-hoc codesign failed with status ${res.status}`)
