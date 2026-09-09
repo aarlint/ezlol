@@ -122,6 +122,18 @@ screen *can* show, including ones that only appear later (bench in ARAM, enemy p
 is offered as a dashed ghost slot: place it once and the real box drops into that spot when it shows up, so
 nothing shifts mid-game. Boxes keep their exact positions; gaps are allowed.
 
+## Installing on macOS
+
+Releases are not yet signed with a Developer ID, so the first launch needs right-click → **Open**. If macOS
+instead says the app is *damaged*, clear the quarantine flag and re-seal it, then open it normally:
+
+```bash
+xattr -cr /Applications/ezlol.app
+codesign --force --deep --sign - /Applications/ezlol.app
+```
+
+See `docs/SIGNING.md` for signing and notarizing builds so none of this is needed.
+
 ## Desktop app
 
 The installed app adds a **Desktop** section to Settings: **Launch at login** registers ezlol as a login
