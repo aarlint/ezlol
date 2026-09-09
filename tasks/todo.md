@@ -33,9 +33,12 @@
 
 - [x] Champ select is one fixed strip under the champion bar (team / enemies / bench), only during champion select; select grid holds the build only
 
+- [x] Unsigned mac builds are ad-hoc signed by an afterSign hook (Gatekeeper "damaged" fix); installed 1.0.10 repaired in place
+
 ## Next
+- [ ] Developer ID signing + notarization: create the Developer ID Application cert (Xcode → Settings → Accounts → Manage Certificates), export .p12, set the five repo secrets per docs/SIGNING.md
 - [ ] Verify Launch at login on a packaged build (login item only registers when app.isPackaged)
-- [x] v1.0.8 and v1.0.9 released 2026-09-07 (all jobs green)
+- [x] v1.0.8, v1.0.9 (2026-09-07) and v1.0.10 (2026-09-08) released, all jobs green
 - [x] Trade buttons verified in ARAM champ select (AVAILABLE + ids)
 - [ ] Verify Auto runes + reroll hint in next champ select
 - [ ] Verify post-game share badges at next game end

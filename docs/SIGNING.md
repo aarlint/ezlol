@@ -4,6 +4,18 @@ Unsigned builds work, but macOS shows "unidentified developer" and the app has t
 swap updater. With a Developer ID certificate the builds are signed, notarized (no Gatekeeper prompt) and use
 electron-updater in place. CI (`.github/workflows/build.yml`) does all of it once five repository secrets exist.
 
+## Unsigned builds: "ezlol is damaged and can't be opened"
+
+Builds made without a Developer ID identity are ad-hoc signed by `electron/scripts/adhoc-sign.js`, so macOS
+shows the usual "unidentified developer" prompt (right-click the app → **Open** once). If you still see
+"damaged and can't be opened, move to Trash" (older builds, or a copy re-quarantined by another app), clear the
+quarantine flag and re-seal it:
+
+```bash
+xattr -cr /Applications/ezlol.app
+codesign --force --deep --sign - /Applications/ezlol.app
+```
+
 ## One-time setup
 
 1. **Apple Developer Program** membership (https://developer.apple.com/programs/, $99/yr).
