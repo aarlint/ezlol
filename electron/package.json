@@ -1,7 +1,7 @@
 {
   "name": "ezlol-app",
   "productName": "ezlol",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "League of Legends queue auto-accept and build viewer",
   "private": true,
   "main": "main.js",
