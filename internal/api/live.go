@@ -37,6 +37,7 @@ type livePlayer struct {
 	ItemArmor int `json:"itemArmor"`
 	ItemMR    int `json:"itemMR"`
 	ItemHP    int `json:"itemHP"`
+	ItemGold  int `json:"itemGold"` // what the inventory cost (Data Dragon total gold)
 }
 
 type liveItem struct {
@@ -111,6 +112,8 @@ type liveResponse struct {
 	Mayhem     bool               `json:"mayhem,omitempty"`    // ARAM: Mayhem (augments, Headliners)
 	Classic    bool               `json:"classic,omitempty"`   // League Classic (old Rift)
 	Headliner  *headlinerInfo     `json:"headliner,omitempty"` // Mayhem: this game's band, when known
+	NextBuy    *nextBuy           `json:"nextBuy,omitempty"`   // next item on the build the UI sent (?path=)
+	Momentum   *momentum          `json:"momentum,omitempty"`  // team item gold over time (not Arena)
 	Events     []live.Event       `json:"events"`
 }
 
@@ -122,6 +125,7 @@ func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
 	}
 	if gd == nil {
 		s.headliner.reset()
+		s.timeline.reset()
 		writeJSON(w, 200, liveResponse{InGame: false})
 		return
 	}
@@ -157,6 +161,7 @@ func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
 					lp.ItemArmor += int(dd.Stats["FlatArmorMod"]) * n
 					lp.ItemMR += int(dd.Stats["FlatSpellBlockMod"]) * n
 					lp.ItemHP += int(dd.Stats["FlatHPPoolMod"]) * n
+					lp.ItemGold += dd.Gold * n
 				}
 			}
 			lp.Items = append(lp.Items, li)
@@ -192,6 +197,24 @@ func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
 	if gd.GameData.MapNumber == 11 && !resp.Classic {
 		resp.Objectives = summarizeObjectives(gd, resp.Players, resp.MyTeam)
 		resp.Opponent = laneOpponent(resp.Players)
+	}
+	if gd.GameData.MapNumber != 30 && resp.MyTeam != "" {
+		resp.Momentum = &momentum{
+			Points: s.timeline.record(teamSample(gd.GameData.GameTime, resp.Players, resp.MyTeam)),
+			Marks:  momentumMarks(gd.Events.Events, resp.Players, resp.MyTeam),
+		}
+	}
+	if path := parsePath(r.URL.Query().Get("path")); len(path) > 0 {
+		for _, p := range gd.AllPlayers {
+			if firstNonEmpty(p.RiotIDName, p.SummonerName) != meName {
+				continue
+			}
+			var owned []int
+			for _, it := range p.Items {
+				owned = append(owned, it.ID)
+			}
+			resp.NextBuy = planNextBuy(d, path, owned, int(gd.ActivePlayer.CurrentGold))
+		}
 	}
 	evs := gd.Events.Events
 	if len(evs) > 12 {

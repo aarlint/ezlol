@@ -16,6 +16,9 @@ import SettingsModal from './components/SettingsModal.vue'
 import Toasts from './components/Toasts.vue'
 import ThemeMenu from './components/ThemeMenu.vue'
 import type { ThemeOption } from './components/ThemeMenu.vue'
+import CommandPalette from './components/CommandPalette.vue'
+import type { PaletteAction, PalettePick } from './components/CommandPalette.vue'
+import { buildState, pickMode, pickRole } from './build'
 import { toast } from './toast'
 import type { UpdateInfo } from './types'
 
@@ -193,6 +196,51 @@ async function toggleAuto() {
   if (!status.value) return
   status.value = await api.setAutoAccept(!status.value.autoAccept)
 }
+
+// Command palette (⌘K / Ctrl+K / "/").
+const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
+const paletteKey = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl+K'
+async function onPalettePick(p: PalettePick) {
+  // Same rule as the picker: browsing another champion stops following the client.
+  if (status.value?.pickedChampion && status.value.pickedChampion !== p.champion.id) followPick.value = false
+  const same = selected.value?.id === p.champion.id
+  if (p.mode) buildState.mode = p.mode // set first: the champion change loads with it
+  select(p.champion)
+  await nextTick()
+  if (p.role) pickRole(p.role)
+  else if (p.mode && same) pickMode(p.mode)
+}
+async function checkUpdateNow() {
+  try {
+    const u = await api.checkUpdate()
+    upd.value = u
+    if (u.hasUpdate) {
+      announcedUpdate = ''
+      await checkUpdateSoon()
+    } else toast({ key: 'update', kind: 'success', title: 'ezlol is up to date', body: `You have ${u.current}.`, ttl: 5000 })
+  } catch (e) {
+    toast({ key: 'update', kind: 'warn', title: 'Update check failed', body: (e as Error).message })
+  }
+}
+const paletteActions = computed<PaletteAction[]>(() => {
+  const on = (b?: boolean) => (b ? 'off' : 'on')
+  const modeHint = (m: string) => (buildState.mode === m ? 'current' : '')
+  return [
+    { id: 'auto', group: 'Client', label: `Auto-accept: turn ${on(status.value?.autoAccept)}`, keywords: 'queue ready check accept', run: () => void toggleAuto() },
+    { id: 'follow', group: 'Build', label: `Follow my pick: turn ${on(followPick.value)}`, keywords: 'champion client', run: () => (followPick.value = !followPick.value) },
+    { id: 'mode-', group: 'Build', label: 'Build mode: follow the client queue', hint: modeHint(''), keywords: 'auto', run: () => pickMode('') },
+    { id: 'mode-sr', group: 'Build', label: "Build mode: Summoner's Rift", hint: modeHint('sr'), keywords: 'ranked normal rift sr', run: () => pickMode('sr') },
+    { id: 'mode-aram', group: 'Build', label: 'Build mode: ARAM', hint: modeHint('aram'), keywords: 'mayhem howling abyss', run: () => pickMode('aram') },
+    { id: 'mode-arena', group: 'Build', label: 'Build mode: Arena', hint: modeHint('arena'), keywords: 'cherry 2v2', run: () => pickMode('arena') },
+    { id: 'edit', group: 'Layout', label: editing.value ? 'Finish editing the layout' : 'Edit layout', keywords: 'drag resize boxes widgets', run: () => (editing.value = !editing.value) },
+    { id: 'save', group: 'Layout', label: 'Save layout for this screen', keywords: 'preset', run: saveLayout },
+    { id: 'reset', group: 'Layout', label: 'Reset layout for this screen', keywords: 'default restore', run: resetLayout },
+    ...THEMES.map((t) => ({ id: `theme-${t.id}`, group: 'Theme', label: `Theme: ${t.label}`, hint: theme.value === t.id ? 'current' : '', keywords: 'colors look skin', run: () => (theme.value = t.id) })),
+    { id: 'sound', group: 'App', label: `Sound: turn ${on(soundOn.value)}`, keywords: 'mute audio volume', run: () => (soundOn.value = !soundOn.value) },
+    { id: 'settings', group: 'App', label: 'Open settings', keywords: 'preferences riot key login tray', run: () => (showSettings.value = true) },
+    { id: 'update', group: 'App', label: 'Check for updates', hint: upd.value?.current ? `on ${upd.value.current}` : '', keywords: 'version upgrade', run: () => void checkUpdateNow() },
+  ]
+})
 </script>
 
 <template>
@@ -218,6 +266,7 @@ async function toggleAuto() {
         <span class="track" />
         <span>Auto-accept {{ status.autoAccept ? 'ON' : 'OFF' }}</span>
       </label>
+      <button class="kbd-btn" :title="`Command palette: jump to a champion or run an action (${paletteKey} or /)`" :aria-label="`Command palette (${paletteKey})`" @click="palette?.show()">{{ paletteKey }}</button>
       <ThemeMenu v-model="theme" :options="THEMES" />
       <button class="gear" title="Settings" aria-label="Settings" @click="showSettings = true">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -228,6 +277,7 @@ async function toggleAuto() {
     </header>
 
     <Toasts />
+    <CommandPalette ref="palette" :champions="champions" :actions="paletteActions" @pick="onPalettePick" />
     <SettingsModal v-if="showSettings" @close="showSettings = false" />
 
     <!-- Fixed bars, never part of the grid below: the champion card (with the picker

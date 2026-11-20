@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Widget from './Widget.vue'
+import GoldGraph from './GoldGraph.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, estRank, fmtTime } from '../api'
 import * as sound from '../sound'
@@ -102,10 +103,28 @@ function diffItems(prev: Live | null, next: Live) {
 let lastGT = 0
 let lastEvent = -1
 let offerPinged = false
+let shopPinged = false
+// The build you are looking at, as an item path for Next buy: core, boots, then
+// the first three late options. Only sent when it is your champion's build.
+const buildPath = computed<number[]>(() => {
+  const b = buildState.build
+  const me = myself.value
+  if (!b || isArena.value || (me?.champion.id && b.champion.id !== me.champion.id)) return []
+  const ids: number[] = []
+  const add = (id?: number) => {
+    if (id && !ids.includes(id)) ids.push(id)
+  }
+  b.core?.[0]?.items.forEach((i) => add(i.id))
+  add(b.boots?.[0]?.items[0]?.id)
+  b.late?.slice(0, 3).forEach((set) => add(set.items[0]?.id))
+  return ids.slice(0, 12)
+})
+const gold = (n: number) => `${Math.round(n).toLocaleString()}g`
+const kGold = (n: number) => `${(n / 1000).toFixed(1)}k`
 async function poll() {
   try {
     const prev = live.value
-    live.value = await api.live()
+    live.value = await api.live(buildPath.value)
     if (live.value.inGame) diffItems(prev, live.value)
     // Rift: keep the lane opponent's ability cooldowns open.
     const opp = live.value.players?.find((p) => p.champion.name === live.value?.opponent)
@@ -128,6 +147,19 @@ async function poll() {
       sound.accepted()
     }
     if (!m?.isDead) respawnPinged = false
+    // Dead (in fountain, shop open): say what your gold buys, once per death.
+    const nb = live.value.nextBuy
+    if (m?.isDead && nb?.target?.id && !shopPinged && (nb.complete || nb.buyCost >= 800)) {
+      shopPinged = true
+      const after = nb.after ?? []
+      const what = nb.complete ? [nb.target, ...after].map((b) => b.name).join(' + ') : (nb.buy ?? []).map((b) => b.name).join(' + ')
+      const spent = nb.complete ? nb.left + after.reduce((a, b) => a + b.gold, 0) : nb.buyCost
+      toast({ key: 'shop', kind: 'info', title: `Shop: ${what}`, body: nb.complete ? `${gold(spent)} of your ${gold(nb.gold)}.` : `${gold(spent)} now, ${gold(nb.left - spent)} left on ${nb.target.name}.`, ttl: 15000 })
+    }
+    if (!m?.isDead && shopPinged) {
+      shopPinged = false
+      dismissKey('shop')
+    }
     // Chime once when an augment offer is detected on screen.
     const off = live.value.offer
     if (off?.active) {
@@ -407,7 +439,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
           </div>
           <div class="info">
             <div class="pname">{{ p.champion.name }} <span class="muted">{{ p.name }}</span></div>
-            <div class="kda">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }}<span v-if="isRift" class="muted"> · {{ POS[p.position] ?? '' }} {{ p.cs }}cs ({{ csm(p) }}/m)</span> <span class="istats"><b v-if="p.itemAD" class="ad">{{ p.itemAD }} AD</b><b v-if="p.itemAP" class="ap">{{ p.itemAP }} AP</b><b v-if="p.itemArmor" class="ar">{{ p.itemArmor }} AR</b><b v-if="p.itemMR" class="mr">{{ p.itemMR }} MR</b></span></div>
+            <div class="kda">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }}<span v-if="isRift" class="muted"> · {{ POS[p.position] ?? '' }} {{ p.cs }}cs ({{ csm(p) }}/m)</span><span v-if="p.itemGold" class="muted" title="What their items cost"> · {{ kGold(p.itemGold) }}</span> <span class="istats"><b v-if="p.itemAD" class="ad">{{ p.itemAD }} AD</b><b v-if="p.itemAP" class="ap">{{ p.itemAP }} AP</b><b v-if="p.itemArmor" class="ar">{{ p.itemArmor }} AR</b><b v-if="p.itemMR" class="mr">{{ p.itemMR }} MR</b></span></div>
           </div>
           <div class="items"><img v-for="it in (p.items ?? []).filter((i) => i.image)" :key="it.id" :src="it.image" :title="it.name" /></div>
           <div class="spells">
@@ -436,7 +468,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
           </div>
           <div class="info">
             <div class="pname">{{ p.champion.name }} <span class="muted">{{ p.name }}</span></div>
-            <div class="kda">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }}<span v-if="isRift" class="muted"> · {{ POS[p.position] ?? '' }} {{ p.cs }}cs ({{ csm(p) }}/m)</span> <span class="istats"><b v-if="p.itemAD" class="ad">{{ p.itemAD }} AD</b><b v-if="p.itemAP" class="ap">{{ p.itemAP }} AP</b><b v-if="p.itemArmor" class="ar">{{ p.itemArmor }} AR</b><b v-if="p.itemMR" class="mr">{{ p.itemMR }} MR</b></span></div>
+            <div class="kda">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }}<span v-if="isRift" class="muted"> · {{ POS[p.position] ?? '' }} {{ p.cs }}cs ({{ csm(p) }}/m)</span><span v-if="p.itemGold" class="muted" title="What their items cost"> · {{ kGold(p.itemGold) }}</span> <span class="istats"><b v-if="p.itemAD" class="ad">{{ p.itemAD }} AD</b><b v-if="p.itemAP" class="ap">{{ p.itemAP }} AP</b><b v-if="p.itemArmor" class="ar">{{ p.itemArmor }} AR</b><b v-if="p.itemMR" class="mr">{{ p.itemMR }} MR</b></span></div>
           </div>
           <div class="items"><img v-for="it in (p.items ?? []).filter((i) => i.image)" :key="it.id" :src="it.image" :title="it.name" /></div>
           <div class="spells"><img v-for="(s, i) in p.spells ?? []" :key="i" :src="s.image" :title="s.name" /></div>
@@ -504,6 +536,50 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
         <span>Crit / AS</span><b>{{ Math.round(Number(live.me.championStats?.critChance ?? 0) * 100) }}% / {{ Number(live.me.championStats?.attackSpeed ?? 0).toFixed(2) }}</b>
         <span>Lifesteal / Omni</span><b>{{ Math.round(Number(live.me.championStats?.lifeSteal ?? 0) * 100) }}% / {{ Math.round(Number(live.me.championStats?.omnivamp ?? 0) * 100) }}%</b>
       </div>
+    </Widget>
+
+    <!-- Next buy: your gold against the next item on the build -->
+    <Widget v-if="live.nextBuy" id="live-nextbuy" :w="3">
+      <h2>Next buy <span class="muted" style="margin-left: 8px; text-transform: none; letter-spacing: 0">{{ live.nextBuy.done }}/{{ live.nextBuy.total }} of the build</span></h2>
+      <template v-if="live.nextBuy.target?.id">
+        <div class="nb-target">
+          <img :src="live.nextBuy.target.image" :alt="live.nextBuy.target.name" />
+          <div class="nb-body">
+            <div class="nb-name">{{ live.nextBuy.target.name }}</div>
+            <div class="nb-sub">
+              <template v-if="live.nextBuy.complete">Ready: {{ gold(live.nextBuy.left) }} of your {{ gold(live.nextBuy.gold) }}</template>
+              <template v-else>{{ gold(live.nextBuy.left - live.nextBuy.gold) }} short</template>
+              <span class="muted"> · {{ gold(live.nextBuy.cost) }}<template v-if="live.nextBuy.have">, {{ gold(live.nextBuy.have) }} in parts</template></span>
+            </div>
+          </div>
+        </div>
+        <div class="nb-bar" role="img" :aria-label="`${Math.round((100 * Math.min(live.nextBuy.cost, live.nextBuy.have + live.nextBuy.gold)) / live.nextBuy.cost)}% of ${live.nextBuy.target.name}`">
+          <i class="have" :style="{ width: (100 * live.nextBuy.have) / live.nextBuy.cost + '%' }" :title="`${gold(live.nextBuy.have)} in components`" />
+          <i class="cash" :style="{ width: (100 * Math.min(live.nextBuy.gold, live.nextBuy.left)) / live.nextBuy.cost + '%' }" :title="`${gold(live.nextBuy.gold)} gold`" />
+        </div>
+        <div class="nb-legend muted"><span><i class="sw have" />parts</span><span><i class="sw cash" />gold</span></div>
+        <div v-if="live.nextBuy.complete" class="adv go">BUY {{ live.nextBuy.target.name }}</div>
+        <div v-if="live.nextBuy.complete && live.nextBuy.after?.length" class="nb-row">
+          <span class="muted">With the rest</span>
+          <span v-for="b in live.nextBuy.after" :key="b.id" class="pill" :title="`${b.name}: ${gold(b.gold)}`"><img :src="b.image" />{{ b.name }} {{ b.gold }}</span>
+        </div>
+        <div v-else-if="live.nextBuy.buy?.length" class="nb-row">
+          <span class="muted">Buy now</span>
+          <span v-for="b in live.nextBuy.buy" :key="b.id" class="pill" :title="`${b.name}: ${gold(b.gold)}`"><img :src="b.image" />{{ b.name }} {{ b.gold }}</span>
+        </div>
+        <div v-else class="nb-row muted">Nothing on the path fits {{ gold(live.nextBuy.gold) }} yet.</div>
+        <div v-if="live.nextBuy.then?.length" class="nb-row">
+          <span class="muted">Then</span>
+          <img v-for="t in live.nextBuy.then" :key="t.id" :src="t.image" :title="`${t.name} (${gold(t.gold)})`" class="nb-then" />
+        </div>
+      </template>
+      <div v-else class="muted">Build complete: every item on the path is in your bag.</div>
+    </Widget>
+
+    <!-- Momentum: item gold lead over time -->
+    <Widget v-if="live.momentum?.points?.length" id="live-momentum" :w="6" class="noscroll">
+      <h2>Gold lead <span class="muted" style="margin-left: 8px; text-transform: none; letter-spacing: 0">item value by team · hover for detail</span></h2>
+      <GoldGraph :momentum="live.momentum" :game-time="live.gameTime" />
     </Widget>
 
     <!-- Shopping -->
@@ -619,6 +695,21 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 .buy-who .t { font-weight: 400; font-size: 10px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .buy-stats { font-size: 12px; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .abil { display: flex; gap: 8px; font-family: var(--display); }
+/* Next buy */
+.nb-target { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: center; }
+.nb-target img { width: 44px; height: 44px; border: 1px solid var(--gold-deep); background: #000; }
+.nb-body { min-width: 0; }
+.nb-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nb-sub { font-size: 12px; font-variant-numeric: tabular-nums; }
+.nb-bar { display: flex; gap: 2px; height: 8px; margin: 8px 0 3px; background: var(--surface-input); border-radius: 4px; overflow: hidden; }
+.nb-bar i { display: block; height: 100%; min-width: 0; }
+.nb-bar .have, .sw.have { background: var(--gold); }
+.nb-bar .cash, .sw.cash { background: var(--hextech-2); }
+.nb-legend { display: flex; gap: 12px; font-size: 10px; }
+.nb-legend .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+.nb-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; font-size: 12px; }
+.nb-row .pill img { width: 16px; height: 16px; }
+.nb-then { width: 26px; height: 26px; border: 1px solid var(--gold-deep); opacity: .8; }
 .istats { margin-left: 6px; display: inline-flex; gap: 5px; font-size: 10px; }
 .istats b { font-weight: 600; }
 .istats .ad { color: #e8a33d; }

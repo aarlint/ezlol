@@ -37,7 +37,11 @@
 
 - [x] ARAM: Mayhem Season 3 (2026-11-19, patch 16.23): every Mayhem queue id (2400/2401/2403/2405/2410/2450/3240/3270/3280), augment list = the patch's blitz pool (all 240 recognisable on screen, not only the ~100 with champion stats; all-champion fallback; NEW tags; removed augments dropped), Headliners (catalogue of 13, manual pick, inferred from Pentakill/Maestro/Superfans evidence, strict OCR of the band name), death scans for bonus picks, queued screens counted, Pentakill pick ranked by skill order, League Classic recognised (queues 4300-4321, no modern objective timers), Makefile creates bin/
 
+- [x] 1.0.13 (2026-11-20): Next buy (gold vs next build item, component credit, shop toast on death, leftover planned onto the following item), Gold lead graph (team item value sampled server-side, swing marks), ⌘K / Ctrl+K / "/" command palette (champion + mode/lane, actions), item value on scoreboard rows, tools/fakegame + EZLOL_LIVE_URL, CI: signed-only fallback when notarization credentials fail, merged latest-mac.yml in releases
+
 ## Next
+- [ ] Renew APPLE_APP_SPECIFIC_PASSWORD (CI notarization returns 401; builds ship signed, not notarized)
+- [ ] Verify Next buy + shop toast and Gold lead in a real game (tested against tools/fakegame only)
 - [ ] Verify Headliner OCR on a real game start (no documented on-screen wording; matcher accepts the bare band name or "... stage"/"headliner" lines)
 - [ ] Verify a death-scan bonus pick (K/DA photocards) and a Maestro four-card offer in game
 - [ ] Preseason 2027 (January): Kleptomancy + Titanborn keystones, Fatetaker / Lifebloom Crown / Gravescourge, Mayhem overloaded augments, Faelights removed — Data Dragon brings the items/runes; re-check objective timers and Mayhem pick levels after the patch notes

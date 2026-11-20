@@ -11,7 +11,9 @@ Local companion app for League of Legends: auto-accept, live game intel, builds 
 3. **Live game** (in-game Live Client Data, no key) – scoreboard for both teams, item-derived AD/AP/armor/MR per
    player, "what to build" threat tip, enemy summoner-spell cooldown tracker (click when they use it), death
    timers, numbers-advantage banner, focus-target suggestion, enemy ability cooldowns (click a portrait),
-   item purchase feed, kill feed, your stats and gold.
+   item purchase feed, kill feed, your stats and gold. **Next buy** tracks your gold against the next item on
+   the build you are viewing (components you carry count towards it) and, when you die, says what to buy.
+   **Gold lead** graphs both teams' item value over the game with aces, drakes, Barons and multikills marked.
 4. **Builds** – current-patch build for any champion and mode: Summoner's Rift by lane and ARAM, plus
    ARAM Mayhem augment tiers. Starting items, core build order, boots, late items, runes, summoner spells,
    skill order and full level path, win/pick rates. Follows your pick in champ select and your champion in
@@ -29,7 +31,10 @@ Local companion app for League of Legends: auto-accept, live game intel, builds 
    items, plus Arena builds from op.gg (prismatic items, best partners, augment stats by average placement)
    and the same on-screen augment pick assist ranked by placement.
 8. **Post-game** – full scoreboard with damage, gold and items as soon as the client has it.
-9. **Electron shell** – native macOS/Windows window with self-update.
+9. **Command palette** – press <kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> (or <kbd>/</kbd>) and type a champion to open its build;
+   add a mode or lane to jump straight there (`ahri mid`, `jinx aram`, `kaisa arena`). Themes, auto-accept,
+   build mode, layout and settings are in there too.
+10. **Electron shell** – native macOS/Windows window with self-update.
 
 Go backend, Vue 3 frontend, single binary. Everything runs on `127.0.0.1`; nothing leaves your machine except
 read-only requests to Riot's CDN, community stat sites and, optionally, the Riot API.
@@ -51,10 +56,11 @@ read-only requests to Riot's CDN, community stat sites and, optionally, the Riot
 ## Install
 
 Grab the latest build from [Releases](https://github.com/aarlint/ezlol/releases): `.dmg` for macOS
-(Apple Silicon `arm64` or Intel `x64`), `.exe` installer or portable for Windows. Builds are unsigned, so:
+(Apple Silicon `arm64` or Intel `x64`), `.exe` installer or portable for Windows.
 
-- macOS: after copying to Applications run `xattr -cr /Applications/ezlol.app` once, or right-click → Open.
-- Windows: click "More info → Run anyway" on the SmartScreen prompt.
+- macOS: builds are signed with a Developer ID. If a release is not notarized (the release notes say so),
+  right-click → Open the first time.
+- Windows: builds are unsigned; click "More info → Run anyway" on the SmartScreen prompt.
 
 Start it before or after the League client; it reconnects on its own.
 
@@ -66,7 +72,19 @@ make build      # builds the UI, embeds it, produces bin/ezlol
 make app        # run the Electron shell against bin/ezlol
 ```
 
-Requires Go 1.26+ and Node 22+. CI (`.github/workflows/build.yml`) runs vet/tests, then builds macOS
+Requires Go 1.26+ and Node 22+.
+
+To work on the live screen without a game, run the simulated match in `tools/fakegame` (ten players, kills,
+aces, item purchases with real Data Dragon recipes, Rift objectives) and point ezlol at it:
+
+```bash
+go run ./tools/fakegame -addr 127.0.0.1:2998 -speed 6          # ARAM: Mayhem; -mode rift for the Rift
+EZLOL_LIVE_URL=https://127.0.0.1:2998 ./bin/ezlol -no-open      # then open http://127.0.0.1:7331/?mode=game
+```
+
+With ezlol running, your fake champion follows the build ezlol shows, so Next buy credits the right parts.
+
+CI (`.github/workflows/build.yml`) runs vet/tests, then builds macOS
 arm64/x64 and Windows x64 desktop apps; pushing a `v*` tag publishes them as a GitHub release.
 
 ## How it works
@@ -78,6 +96,18 @@ The League client exposes a local HTTPS API (the LCU). ezlol reads the port and 
 and when the phase is `ReadyCheck` with no response yet it POSTs `/lol-matchmaking/v1/ready-check/accept`.
 Auto-accept is on by default and can be toggled in the UI. Every phase change and accept is logged in the
 Events panel and streamed to the UI over Server-Sent Events.
+
+### Next buy and Gold lead
+
+The UI sends the build it is showing (core items, boots, the first late options) with each live poll. ezlol
+finds the first item you do not own yet (an upgraded boot counts as owning the boot), walks its Data Dragon
+recipe crediting the components in your inventory, and reports what is left to pay. Short of that, it picks
+the biggest unowned components your gold covers; with enough gold it also spends the rest on the next item.
+
+The game API only reveals your own gold, but everyone's items are visible, so Gold lead uses the Data Dragon
+price of each team's inventory as the gold measure. ezlol samples it every 10 s of game time on the server
+(a reload mid-game keeps the graph) and marks first blood, aces, drakes, Heralds, Barons and triple kills or
+better from the game's event list. Arena has no two-team score, so it has no graph.
 
 ### Builds
 

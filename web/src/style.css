@@ -260,6 +260,8 @@
   --dim: #6e4d99;
   --green: #2ee6a6;
   --red: #ff4d6d;
+  /* Charts: the pink accent is too close to red to tell the teams apart. */
+  --ally: #2ec8f0;
   --amber: #ffb347;
   --radius: 6px;
   --radius-sm: 4px;
@@ -679,5 +681,6 @@ code { background: var(--surface-input); border: 1px solid var(--gold-deep); pad
 
 
 .gear { min-height: 40px; width: 46px; padding: 0; display: inline-grid; place-items: center; }
+.kbd-btn { min-height: 40px; padding: 0 10px; font-family: var(--display); font-size: 12px; letter-spacing: .06em; }
 .gear svg { display: block; transition: transform .25s ease; }
 .gear:hover svg { transform: rotate(30deg); }
