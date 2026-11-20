@@ -108,6 +108,9 @@ type liveResponse struct {
 	Objectives *objectives        `json:"objectives,omitempty"`
 	Opponent   string             `json:"opponent,omitempty"` // lane opponent champion name
 	Arena      *arenaInfo         `json:"arena,omitempty"`
+	Mayhem     bool               `json:"mayhem,omitempty"`    // ARAM: Mayhem (augments, Headliners)
+	Classic    bool               `json:"classic,omitempty"`   // League Classic (old Rift)
+	Headliner  *headlinerInfo     `json:"headliner,omitempty"` // Mayhem: this game's band, when known
 	Events     []live.Event       `json:"events"`
 }
 
@@ -118,6 +121,7 @@ func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if gd == nil {
+		s.headliner.reset()
 		writeJSON(w, 200, liveResponse{InGame: false})
 		return
 	}
@@ -173,8 +177,19 @@ func (s *Server) liveGame(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Hint = threatHint(resp.Players, resp.MyTeam)
 	resp.Focus, resp.FocusWhy = s.focusTarget(r.Context(), resp.Players, resp.MyTeam)
+	queueID := s.watcher.Status().QueueID
+	resp.Classic = gd.GameData.GameMode == "JADE" || builds.IsClassic(queueID)
+	resp.Mayhem = s.isMayhem(&resp)
+	if resp.Mayhem {
+		s.headliner.tick(gd.GameData.GameTime)
+		s.headliner.inferFromLevels(resp.Players)
+	}
 	resp.Offer, resp.OCR = s.detectOffer(r.Context(), &resp)
-	if gd.GameData.MapNumber == 11 {
+	if resp.Mayhem {
+		resp.Headliner = s.headliner.info()
+	}
+	// Objective timers follow today's Rift rules; Classic's old Rift differs.
+	if gd.GameData.MapNumber == 11 && !resp.Classic {
 		resp.Objectives = summarizeObjectives(gd, resp.Players, resp.MyTeam)
 		resp.Opponent = laneOpponent(resp.Players)
 	}

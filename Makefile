@@ -13,6 +13,7 @@ build: web ocr
 
 # macOS only: screen OCR helper for augment-pick detection (needs Xcode CLT).
 ocr:
+	@mkdir -p bin
 	@if [ "$$(uname)" = "Darwin" ]; then swiftc -O -o bin/ezlol-ocr tools/ocr/main.swift; else echo "ocr helper: macOS only"; fi
 
 run: build

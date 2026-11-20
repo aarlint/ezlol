@@ -48,7 +48,7 @@ export const DEFAULT_LAYOUTS: Record<ModeKey, Record<string, Pos>> = {
     'live-enemies': P(3, 0, 6, 10), 'live-allies': P(3, 10, 6, 10), ...BUILD_UNDER_TEAMS, ...LIVE_RIGHT,
   },
   'game-aram': {
-    'live-status': P(0, 0, 3, 8), 'aug-prismatic': P(0, 8, 3, 9), 'aug-gold': P(0, 17, 3, 9), 'aug-silver': P(0, 26, 3, 9),
+    'live-status': P(0, 0, 3, 8), 'live-headliner': P(0, 8, 3, 6), 'aug-prismatic': P(0, 14, 3, 9), 'aug-gold': P(0, 23, 3, 9), 'aug-silver': P(0, 32, 3, 9),
     'live-enemies': P(3, 0, 6, 10), 'live-allies': P(3, 10, 6, 10), ...BUILD_UNDER_TEAMS, ...LIVE_RIGHT,
   },
   'game-arena': {
@@ -112,6 +112,7 @@ export const CATALOG: Record<ModeKey, WidgetSpec[]> = {
   ],
   'game-aram': [
     ...LIVE_COMMON,
+    { id: 'live-headliner', title: 'Headliner', w: 3, h: 6, when: 'ARAM Mayhem' },
     { id: 'live-enemies', title: 'Enemies', w: 6, h: 10 },
     { id: 'live-allies', title: 'Your team', w: 6, h: 10 },
     ...BUILD_WIDGETS,

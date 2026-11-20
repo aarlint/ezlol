@@ -41,11 +41,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             goos: darwin
             goarch: arm64
             eb: --mac --arm64
-          - os: macos-14
+          - os: macos-15
             goos: darwin
             goarch: amd64
             eb: --mac --x64

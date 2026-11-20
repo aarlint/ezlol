@@ -41,6 +41,7 @@ type Server struct {
 	info      infoCache
 	ocr       *screen.Reader
 	offer     offerState
+	headliner headlinerState
 	arena     arenaCache
 	ui        fs.FS  // built frontend, may be nil in dev
 	devProxy  string // vite dev server url, may be empty
@@ -61,6 +62,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/champions", s.champions)
 	mux.HandleFunc("GET /api/champions/{key}/build", s.build)
 	mux.HandleFunc("GET /api/live", s.liveGame)
+	mux.HandleFunc("GET /api/headliners", s.listHeadliners)
+	mux.HandleFunc("POST /api/headliner", s.setHeadliner)
 	mux.HandleFunc("GET /api/champselect", s.champSelect)
 	mux.HandleFunc("GET /api/me/{id}", s.meChampion)
 	mux.HandleFunc("GET /api/session", s.session)
@@ -273,6 +276,13 @@ func (s *Server) build(w http.ResponseWriter, r *http.Request) {
 		queueID = 1700
 	}
 	mode := builds.QueueTag(queueID)
+	classic := mode == "classic"
+	if classic {
+		// League Classic plays old kits, items and runes; the closest data we
+		// have is the modern Rift build, flagged as such below.
+		mode, queueID = "sr", 420
+	}
+	augPatch := patch
 	patch = builds.StoreKey(patch, queueID)
 
 	roles := s.store.Roles(patch, champ.ID)
@@ -320,15 +330,18 @@ func (s *Server) build(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if classic {
+		b.Notes = append(b.Notes, "League Classic: these are today's Summoner's Rift builds. Classic uses the old kits, items and runes, so treat them as a rough guide only.")
+	}
 	if mode == "aram" && s.community != nil {
-		if augs, scope, err := s.community.Augments(r.Context(), st.Patch, champ.ID); err != nil {
+		if augs, scope, err := s.community.Augments(r.Context(), augPatch, champ.ID); err != nil {
 			s.log.Warn("community augments", "champion", champ.Key, "err", err)
 		} else {
 			b.Augments, b.AugScope = augs, scope
 		}
 	}
 	if mode == "arena" && s.community != nil {
-		if augs, scope, err := s.community.ArenaAugments(r.Context(), st.Patch, champ.ID); err != nil {
+		if augs, scope, err := s.community.ArenaAugments(r.Context(), augPatch, champ.ID); err != nil {
 			s.log.Warn("arena augments", "champion", champ.Key, "err", err)
 		} else {
 			b.Augments, b.AugScope = augs, scope

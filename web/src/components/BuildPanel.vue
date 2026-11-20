@@ -5,13 +5,26 @@ import Widget from './Widget.vue'
 import { computed } from 'vue'
 import { winrate } from '../api'
 import { applyRunes, buildState as s } from '../build'
-import type { Build, ItemSet, Status } from '../types'
+import type { Augment, Build, ItemSet, Status } from '../types'
 
 const props = defineProps<{ status: Status | null; compact?: boolean }>()
 const build = computed(() => s.build)
 const applying = computed(() => s.applying)
 const RARITIES = ['prismatic', 'gold', 'silver'] as const
-const augBy = (b: Build, r: string) => (b.augments ?? []).filter((a) => a.rarity === r).slice(0, props.compact && !s.expandAugs ? 6 : 12)
+// Top of each rarity, plus anything new this patch so fresh augments are never
+// hidden below the cut. Pentakill's exclusive picks are not pool augments.
+const augBy = (b: Build, r: string) => {
+  const all = (b.augments ?? []).filter((a) => a.rarity === r && !a.special)
+  const top = all.slice(0, props.compact && !s.expandAugs ? 6 : 12)
+  return [...top, ...all.filter((a) => a.new && !top.includes(a))]
+}
+const augCount = (b: Build, r: string) => (b.augments ?? []).filter((a) => a.rarity === r && !a.special).length
+const augStat = (b: Build, a: Augment) => {
+  if (b.mode === 'arena' && a.avgPlace) return { main: `#${a.avgPlace.toFixed(2)}`, sub: `${a.games}g · ${pctf(a.pickRate)}` }
+  if (a.scope === 'none') return { main: '—', sub: a.new ? 'new' : 'no data' }
+  if (a.scope === 'global' && b.mode !== 'arena') return { main: pctf(a.winRate), sub: 'all champs' }
+  return { main: pctf(a.winRate), sub: `${a.games}g · ${pctf(a.pickRate)}` }
+}
 const pctf = (x: number) => `${Math.round(x * 100)}%`
 const tierLabel = (t?: number) => (t ? ['', 'S', 'A', 'B', 'C', 'D'][t] ?? String(t) : '')
 const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games) / total)}% pick` : '')
@@ -25,13 +38,13 @@ const pct = (s: ItemSet, total: number) => (total ? `${Math.round((100 * s.games
       <div v-for="a in augBy(build, r)" :key="a.id" class="aug" :title="a.desc">
         <img v-if="a.icon" :src="a.icon" :alt="a.name" />
         <div class="aug-body">
-          <div class="aug-name"><span class="tier-pip" :class="'t' + a.tier">{{ tierLabel(a.tier) || '?' }}</span>{{ a.name }}</div>
+          <div class="aug-name"><span class="tier-pip" :class="'t' + a.tier">{{ tierLabel(a.tier) || '?' }}</span>{{ a.name }}<span v-if="a.new" class="new-tag" title="Joined the ARAM: Mayhem pool this patch">NEW</span></div>
           <div class="aug-desc">{{ a.desc }}</div>
         </div>
-        <div class="stat"><b>{{ build.mode === 'arena' && a.avgPlace ? `#${a.avgPlace.toFixed(2)}` : pctf(a.winRate) }}</b>{{ a.games }}g · {{ pctf(a.pickRate) }}</div>
+        <div class="stat"><b>{{ augStat(build, a).main }}</b>{{ augStat(build, a).sub }}</div>
       </div>
       <div v-if="!augBy(build, r).length" class="muted">no data</div>
-      <button v-if="compact && (build.augments ?? []).filter((a) => a.rarity === r).length > 6" class="sm" style="margin-top: 6px" @click="s.expandAugs = !s.expandAugs">{{ s.expandAugs ? 'Top 6' : 'Show all' }}</button>
+      <button v-if="compact && augCount(build, r) > 6" class="sm" style="margin-top: 6px" @click="s.expandAugs = !s.expandAugs">{{ s.expandAugs ? 'Top 6' : 'Show all' }}</button>
     </Widget>
 
     <!-- Arena: prismatic items -->
@@ -176,6 +189,7 @@ button.sm { padding: 4px 8px; font-size: 10px; }
 .aug-body { min-width: 0; }
 .aug-name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; }
 .aug-desc { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.new-tag { font-family: var(--display); font-size: 9px; letter-spacing: .08em; padding: 1px 4px; margin-left: 6px; border: 1px solid var(--hextech-2); color: var(--hextech-2); }
 .tier-pip { font-family: var(--display); font-size: 10px; width: 16px; height: 16px; display: grid; place-items: center; border: 1px solid var(--gold-deep); color: var(--muted); }
 .tier-pip.t1 { color: #ff8a3d; border-color: #ff8a3d; } .tier-pip.t2 { color: var(--gold); border-color: var(--gold); } .tier-pip.t3 { color: var(--hextech-2); border-color: var(--hextech-dim); }
 </style>

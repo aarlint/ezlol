@@ -85,16 +85,36 @@ func ShortPatch(v string) string {
 	return parts[0] + "." + parts[1]
 }
 
-// QueueTag groups queue ids into build families.
+// QueueTag groups queue ids into build families. League Classic queues are
+// tagged "classic" so callers can keep modern Rift data (builds, objective
+// timers) from being presented as if it applied to the old Rift.
 func QueueTag(queueID int) string {
-	switch queueID {
-	case 450, 2400, 100: // ARAM, ARAM Mayhem, Butcher's Bridge
+	switch {
+	case queueID == 450 || queueID == 100 || IsMayhem(queueID): // ARAM, Butcher's Bridge, ARAM: Mayhem
 		return "aram"
-	case 1700, 1710, 1750: // Arena (duos), Arena 3x6
+	case queueID == 1700 || queueID == 1710 || queueID == 1740 || queueID == 1750: // Arena duos, Bravery Arena, Arena 3x6
 		return "arena"
+	case IsClassic(queueID):
+		return "classic"
 	default:
 		return "sr"
 	}
+}
+
+// IsMayhem reports whether a queue is ARAM: Mayhem (game mode KIWI): the live
+// queue 2400 plus the event, tournament and "Classic-ish" variants Riot ships.
+func IsMayhem(queueID int) bool {
+	switch queueID {
+	case 2400, 2401, 2403, 2405, 2410, 2450, 3240, 3270, 3280:
+		return true
+	}
+	return false
+}
+
+// IsClassic reports whether a queue is League Classic (game mode JADE, map 453):
+// the old Rift with pre-rework kits, items and runes.
+func IsClassic(queueID int) bool {
+	return (queueID >= 4300 && queueID <= 4321) || queueID == 3260 || queueID == 3262
 }
 
 // StoreKey names the aggregate bucket for a patch + queue family.

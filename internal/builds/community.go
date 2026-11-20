@@ -49,9 +49,12 @@ type Augment struct {
 	WinRate  float64 `json:"winRate"`
 	PickRate float64 `json:"pickRate"`
 	Games    int     `json:"games"`
-	Scope    string  `json:"scope"`              // champion | global
+	Scope    string  `json:"scope"`              // champion | global | none (no stats yet)
 	AvgPlace float64 `json:"avgPlace,omitempty"` // Arena: average placement (lower is better)
 	Top1     float64 `json:"top1,omitempty"`     // Arena: first-place rate
+	New      bool    `json:"new,omitempty"`      // Mayhem: in this patch's pool but not the previous patch's
+	Special  bool    `json:"special,omitempty"`  // Mayhem: headliner-only pick (Pentakill's HEAVY/POWER/THRASH/DOOM), not a pool augment
+	Skill    string  `json:"skill,omitempty"`    // Pentakill entries: the ability it empowers (Q/W/E/R)
 }
 
 // fetch GETs a URL with a browser-ish UA, caching the body for ttl.
@@ -349,58 +352,183 @@ type aramggAugStat struct {
 func atof(s string) float64 { f, _ := strconv.ParseFloat(s, 64); return f }
 func atoi(s string) int     { i, _ := strconv.Atoi(s); return i }
 
-// Augments returns Mayhem augment stats for a champion (falls back to global stats),
-// best first within each rarity.
-func (c *Community) Augments(ctx context.Context, patch string, champID int) ([]Augment, string, error) {
-	meta := c.loadMeta(ctx, patch)
-	stats := map[int]aramggAugStat{}
-	scope := "champion"
-	if b, err := c.fetch(ctx, fmt.Sprintf("aramgg-champ-%d.json", champID), fmt.Sprintf("https://aramgg.com/data/champion-details/%d.json", champID), 6*time.Hour); err == nil {
-		var doc struct {
-			ChampionAugments [][]json.RawMessage `json:"championAugments"`
-		}
-		if json.Unmarshal(b, &doc) == nil && len(doc.ChampionAugments) > 0 && len(doc.ChampionAugments[0]) > 1 {
-			var inner string
-			if json.Unmarshal(doc.ChampionAugments[0][1], &inner) == nil {
-				var parsed struct {
-					Augments map[string]aramggAugStat `json:"augments"`
-				}
-				if json.Unmarshal([]byte(inner), &parsed) == nil {
-					for k, v := range parsed.Augments {
-						stats[atoi(k)] = v
-					}
-				}
-			}
+// mayhemAug is one row of blitz's per-patch Mayhem augment file: the pool the
+// game actually offers that patch.
+type mayhemAug struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"` // internal: ARAM_GetExcited, GoH_PentakillAug_Q, ...
+	DisplayName string `json:"displayName"`
+	Description string `json:"description"`
+	Rarity      int    `json:"rarity"` // 0 silver, 1 gold, 2 prismatic
+	Enabled     bool   `json:"enabled"`
+}
+
+// mayhemPool returns the enabled Mayhem augments for a patch, keyed by id, or
+// nil when the file for that patch is unavailable.
+func (c *Community) mayhemPool(ctx context.Context, patch string) map[int]mayhemAug {
+	if patch == "" {
+		return nil
+	}
+	b, err := c.fetch(ctx, "blitz-augments-"+patch+".json", "https://utils.iesdev.com/static/json/lol/mayham/"+patch+"/augments_en_us", 24*time.Hour)
+	if err != nil {
+		return nil
+	}
+	var rows map[string]mayhemAug
+	if json.Unmarshal(b, &rows) != nil {
+		return nil
+	}
+	out := map[int]mayhemAug{}
+	for _, r := range rows {
+		if r.Enabled && strings.TrimSpace(r.DisplayName) != "" {
+			out[r.ID] = r
 		}
 	}
-	if len(stats) == 0 {
-		scope = "global"
-		b, err := c.fetch(ctx, "aramgg-global.json", "https://aramgg.com/data/augments-stats-raw.json", 6*time.Hour)
-		if err != nil {
-			return nil, "", err
+	return out
+}
+
+// prevPatch maps "16.23" to "16.22"; "" when there is no earlier patch in the
+// same season line to compare against.
+func prevPatch(p string) string {
+	parts := strings.SplitN(p, ".", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	minor := atoi(parts[1])
+	if minor <= 1 {
+		return ""
+	}
+	return parts[0] + "." + strconv.Itoa(minor-1)
+}
+
+var blitzRarity = map[int]string{0: "silver", 1: "gold", 2: "prismatic"}
+
+// pentakillSkill maps Pentakill's exclusive picks to the ability they empower.
+func pentakillSkill(internal string) string {
+	if i := strings.Index(internal, "PentakillAug_"); i >= 0 {
+		k := internal[i+len("PentakillAug_"):]
+		if len(k) == 1 && strings.Contains("QWER", k) {
+			return k
 		}
-		var rows [][]json.RawMessage
-		if err := json.Unmarshal(b, &rows); err != nil {
-			return nil, "", fmt.Errorf("aramgg: %w", err)
+	}
+	return ""
+}
+
+func (c *Community) aramggChampion(ctx context.Context, champID int) map[int]aramggAugStat {
+	stats := map[int]aramggAugStat{}
+	b, err := c.fetch(ctx, fmt.Sprintf("aramgg-champ-%d.json", champID), fmt.Sprintf("https://aramgg.com/data/champion-details/%d.json", champID), 6*time.Hour)
+	if err != nil {
+		return stats
+	}
+	var doc struct {
+		ChampionAugments [][]json.RawMessage `json:"championAugments"`
+	}
+	if json.Unmarshal(b, &doc) != nil || len(doc.ChampionAugments) == 0 || len(doc.ChampionAugments[0]) < 2 {
+		return stats
+	}
+	var inner string
+	if json.Unmarshal(doc.ChampionAugments[0][1], &inner) != nil {
+		return stats
+	}
+	var parsed struct {
+		Augments map[string]aramggAugStat `json:"augments"`
+	}
+	if json.Unmarshal([]byte(inner), &parsed) == nil {
+		for k, v := range parsed.Augments {
+			stats[atoi(k)] = v
 		}
-		for _, row := range rows {
-			if len(row) < 2 {
-				continue
-			}
-			var id, inner string
-			_ = json.Unmarshal(row[0], &id)
-			_ = json.Unmarshal(row[1], &inner)
-			var st aramggAugStat
-			if json.Unmarshal([]byte(inner), &st) == nil {
-				stats[atoi(id)] = st
+	}
+	return stats
+}
+
+func (c *Community) aramggGlobal(ctx context.Context) (map[int]aramggAugStat, error) {
+	stats := map[int]aramggAugStat{}
+	b, err := c.fetch(ctx, "aramgg-global.json", "https://aramgg.com/data/augments-stats-raw.json", 6*time.Hour)
+	if err != nil {
+		return stats, err
+	}
+	var rows [][]json.RawMessage
+	if err := json.Unmarshal(b, &rows); err != nil {
+		return stats, fmt.Errorf("aramgg: %w", err)
+	}
+	for _, row := range rows {
+		if len(row) < 2 {
+			continue
+		}
+		var id, inner string
+		_ = json.Unmarshal(row[0], &id)
+		_ = json.Unmarshal(row[1], &inner)
+		var st aramggAugStat
+		if json.Unmarshal([]byte(inner), &st) == nil {
+			stats[atoi(id)] = st
+		}
+	}
+	return stats, nil
+}
+
+// Augments returns the Mayhem augments for a champion, best first within each
+// rarity. The list is this patch's whole pool (so the on-screen pick reader can
+// recognise any offer): each augment carries the champion's stats when aramgg
+// has them, else the all-champion stats, else none (new or rarely picked).
+// Augments that left the pool are dropped even if stats still list them.
+// Without the pool file (offline, unknown patch) it falls back to whatever has stats.
+func (c *Community) Augments(ctx context.Context, patch string, champID int) ([]Augment, string, error) {
+	meta := c.loadMeta(ctx, patch)
+	pool := c.mayhemPool(ctx, patch)
+	prev := c.mayhemPool(ctx, prevPatch(patch))
+	champStats := c.aramggChampion(ctx, champID)
+	global, gerr := c.aramggGlobal(ctx)
+	if len(champStats) == 0 && len(global) == 0 && len(pool) == 0 {
+		if gerr == nil {
+			gerr = fmt.Errorf("aramgg: no augment data")
+		}
+		return nil, "", gerr
+	}
+	scope := "global"
+	if len(champStats) > 0 {
+		scope = "champion"
+	}
+	ids := map[int]bool{}
+	if len(pool) > 0 {
+		for id := range pool {
+			ids[id] = true
+		}
+	} else {
+		for id := range champStats {
+			ids[id] = true
+		}
+		if len(champStats) == 0 {
+			for id := range global {
+				ids[id] = true
 			}
 		}
 	}
 	var out []Augment
-	for id, st := range stats {
-		games := atoi(st.NumGames)
-		a := Augment{ID: id, Name: meta.names[id], Desc: meta.descs[id], Rarity: meta.rarity[id], Icon: meta.icons[id],
-			Tier: atoi(st.Tier), WinRate: atof(st.WinRate), PickRate: atof(st.PickRate), Games: games, Scope: scope}
+	for id := range ids {
+		a := Augment{ID: id, Name: meta.names[id], Desc: meta.descs[id], Rarity: meta.rarity[id], Icon: meta.icons[id], Scope: "none"}
+		if st, ok := champStats[id]; ok {
+			a.Tier, a.WinRate, a.PickRate, a.Games, a.Scope = atoi(st.Tier), atof(st.WinRate), atof(st.PickRate), atoi(st.NumGames), "champion"
+		} else if st, ok := global[id]; ok {
+			// aramgg's global rows carry no game counts, so these stay unrated.
+			a.Tier, a.WinRate, a.PickRate, a.Scope = atoi(st.Tier), atof(st.WinRate), atof(st.PickRate), "global"
+		}
+		if p, ok := pool[id]; ok {
+			if a.Name == "" {
+				a.Name = strings.TrimSpace(p.DisplayName)
+			}
+			if a.Desc == "" {
+				a.Desc = stripTags(p.Description)
+			}
+			if a.Rarity == "" || a.Rarity == "unknown" {
+				a.Rarity = blitzRarity[p.Rarity]
+			}
+			if strings.HasPrefix(p.Name, "GoH_") {
+				a.Special, a.Skill = true, pentakillSkill(p.Name)
+			}
+			if len(prev) > 0 {
+				_, was := prev[id]
+				a.New = !was
+			}
+		}
 		if a.Name == "" {
 			a.Name = "Augment " + strconv.Itoa(id)
 		}
@@ -415,6 +543,9 @@ func (c *Community) Augments(ctx context.Context, patch string, champID int) ([]
 		a, b := out[i], out[j]
 		if a.Rarity != b.Rarity {
 			return rarityRank(a.Rarity) < rarityRank(b.Rarity)
+		}
+		if a.Special != b.Special {
+			return !a.Special
 		}
 		const minGames = 200
 		if a.Games >= minGames && b.Games >= minGames {
@@ -436,9 +567,12 @@ func (c *Community) Augments(ctx context.Context, patch string, champID int) ([]
 		if ta != tb {
 			return ta < tb
 		}
-		return a.WinRate > b.WinRate
+		if a.WinRate != b.WinRate {
+			return a.WinRate > b.WinRate
+		}
+		return a.ID < b.ID
 	})
-	rateAugments(out, func(a Augment) bool { return a.Games >= 200 })
+	rateAugments(out, func(a Augment) bool { return a.Games >= 200 && !a.Special })
 	return out, scope, nil
 }
 
