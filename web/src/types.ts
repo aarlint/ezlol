@@ -134,9 +134,27 @@ export interface Augment {
   winRate: number
   pickRate: number
   games: number
+  /** champion: this champion's stats · global: all-champion stats · none: no stats yet */
   scope: string
   avgPlace?: number
   top1?: number
+  /** Mayhem: joined the pool this patch */
+  new?: boolean
+  /** Mayhem: headliner-only pick (Pentakill's HEAVY/POWER/THRASH/DOOM), not a pool augment */
+  special?: boolean
+  /** Pentakill pick: the ability it empowers */
+  skill?: string
+}
+
+/** ARAM: Mayhem Headliner: the band that changes one rule for the game. */
+export interface Headliner {
+  id: string
+  name: string
+  rule: string
+  tip: string
+  added: string
+  /** manual (you picked it) | inferred (the game proved it) | screen (read on screen) */
+  source?: string
 }
 
 export interface Progress {
@@ -230,6 +248,9 @@ export interface Live {
   objectives?: Objectives
   opponent?: string
   arena?: ArenaInfo
+  mayhem?: boolean
+  classic?: boolean
+  headliner?: Headliner
 }
 export interface ArenaTeam {
   id: number
@@ -266,6 +287,8 @@ export interface AugmentOffer {
   active: boolean
   pending: boolean
   level: number
+  /** an offer seen with no level pick due (K/DA photocards, queued screens) */
+  bonus?: boolean
   offered: Augment[] | null
   best?: string
   why?: string

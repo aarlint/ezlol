@@ -17,15 +17,19 @@ Local companion app for League of Legends: auto-accept, live game intel, builds 
    skill order and full level path, win/pick rates. Follows your pick in champ select and your champion in
    game. Shows your mastery, recent record and Riot's playstyle pips. Summoner's Rift games also get
    objective timers and a lane-matchup box with the opponent's ability cooldowns.
-5. **Augment picks (macOS)** – when an ARAM Mayhem augment selection is due (game start, levels 7/11/15) ezlol
-   OCRs the screen, recognises the three offered augments and tells you which to take, ranked by your champion's
-   win rate. Needs Screen Recording permission (System Settings → Privacy & Security) for ezlol / your terminal.
-6. **Arena** – the live screen regroups the lobby into its teams (derived from kill assists, since the game
+5. **Augment picks (macOS)** – when an ARAM Mayhem augment selection is due (game start, levels 7/11/15, plus
+   any bonus pick: K/DA photocards, Superfans at 21, Pentakill at 18, queued screens) ezlol OCRs the screen,
+   recognises the offered augments (three, or four under Maestro) and tells you which to take, ranked by your
+   champion's win rate. Needs Screen Recording permission (System Settings → Privacy & Security) for ezlol / your terminal.
+6. **Mayhem Headliners** – ARAM: Mayhem Season 3 gives every game a band that changes one rule. A Headliner box
+   names this game's band, its rule and what to do about it (Pentakill: which of HEAVY / POWER / THRASH fits your
+   skill order). See [Headliners](#headliners) for how it is detected.
+7. **Arena** – the live screen regroups the lobby into its teams (derived from kill assists, since the game
    API reports everyone as one team): your trio/duo, every enemy team ranked by threat with AD/AP split and
    items, plus Arena builds from op.gg (prismatic items, best partners, augment stats by average placement)
    and the same on-screen augment pick assist ranked by placement.
-7. **Post-game** – full scoreboard with damage, gold and items as soon as the client has it.
-8. **Electron shell** – native macOS/Windows window with self-update.
+8. **Post-game** – full scoreboard with damage, gold and items as soon as the client has it.
+9. **Electron shell** – native macOS/Windows window with self-update.
 
 Go backend, Vue 3 frontend, single binary. Everything runs on `127.0.0.1`; nothing leaves your machine except
 read-only requests to Riot's CDN, community stat sites and, optionally, the Riot API.
@@ -85,6 +89,7 @@ Two data sources, merged:
 | **Riot in-client recommendations** (LCU `/lol-perks/v1/recommended-pages/...`) | League client running | Rune pages and summoner spells Riot recommends for the champion/role, Summoner's Rift (map 11) or Howling Abyss (map 12). Always available. |
 | **op.gg ARAM stats** (`lol-api-champion.op.gg`, ~8.5M games/patch) | nothing | ARAM: starting items, core build, boots, 4th–6th options, rune pages, spells, skill order + full level path, win/pick rate, tier/rank. Cached 3 h. |
 | **aramgg.com Mayhem augments** + CommunityDragon icons + blitz.gg descriptions | nothing | ARAM Mayhem augment win/pick rate and tier per champion (Tencent CN + client uploads), grouped by rarity. Cached 6 h. |
+| **blitz.gg per-patch Mayhem augment file** | nothing | The augment pool the game offers this patch: decides which augments are listed and recognisable on screen, drops removed ones even if stats still mention them, and flags augments new since the previous patch. Cached 24 h. |
 | **Compiled from ranked matches** (Riot API match-v5) | `RIOT_API_KEY` | Summoner's Rift: starting items, core build order, boots, 4th–6th item options, rune pages with win rates, spells, skill max order, per-role game counts. |
 
 There is no free public build API, so ezlol compiles its own. With a key set, click **Compile ranked** or
@@ -101,10 +106,37 @@ Static data (champion, item, rune and spell names and images) comes from Data Dr
 
 ## Augment ratings
 
+The Mayhem list is the patch's whole augment pool, not only the augments with stats, so the pick reader can
+recognise any card. Each augment uses your champion's aramgg stats when they exist, else the all-champion win
+rate (labelled *all champs*), else none: augments new this patch carry a **NEW** tag and stay visible below
+the top of their box until data arrives.
+
 Augment boxes carry an S / A / B / C / D pip. The letter comes from ezlol's own ranking, not the data
 source: ARAM Mayhem augments are ordered by win rate (samples under 200 games are unrated and show
 `?`), Arena augments by average placement, and the letter is the augment's rank within its rarity
 (top 12 % S, next 23 % A, next 30 % B, next 20 % C, rest D). The order and the letter therefore always agree.
+
+## Headliners
+
+ARAM: Mayhem Season 3 (patch 26.21 on) picks one Headliner per game: HEARTSTEEL, K/DA, True Damage, Pentakill,
+Cafe Cuties, Command Line, Space Groove, The Bee Band, Superfans, and from 26.23 Arcade, Debonair, La Ilusión
+and Maestro. Neither the client nor the in-game API names it (`gameModeMutators` only carries the map skin), so
+ezlol fills the Headliner box from, strongest first:
+
+- **your choice** in the box's dropdown (kept until the game ends);
+- **evidence in the game**: Pentakill's HEAVY / POWER / THRASH pick on screen, a four-card offer (Maestro), a
+  champion past level 19 (Superfans);
+- **the band's name on screen** in the first three minutes, matched strictly: the whole line, or next to
+  "stage" / "headliner", so the PENTAKILL announcement, the Heartsteel item or a K/DA skin name never counts.
+
+The Headliner adds pick levels (Pentakill 18, Superfans 21). Independently of it, ezlol scans the screen on
+every death, so bonus picks with no level attached (K/DA photocards, banked screens) are still caught.
+
+## League Classic
+
+League Classic (queues 4300–4321, game mode `JADE`) plays the old Rift with old kits, items and runes. ezlol
+recognises it, labels the live screen, hides the modern objective timers and marks the Rift build as a rough
+guide. Classic rotates out in January 2027.
 
 ## Dashboard
 
@@ -222,6 +254,8 @@ GET  /api/champselect                 champ select: teams, bench (ranked), comp 
 POST /api/champselect/swap/{id}       swap with a bench champion
 POST /api/champselect/reroll          spend a reroll
 GET  /api/live                        in-game scoreboard from the Live Client Data API
+GET  /api/headliners                  Mayhem Headliner catalogue + this game's band
+POST /api/headliner   {"id":"maestro"} set this game's Headliner ("" clears)
 GET  /api/eog                         post-game stats block
 GET  /api/me/{id}?mode=aram|sr        your mastery + recent record on a champion
 GET  /api/session                     today's games, wins, losses

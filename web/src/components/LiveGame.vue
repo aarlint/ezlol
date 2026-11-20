@@ -4,7 +4,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, estRank, fmtTime } from '../api'
 import * as sound from '../sound'
 import { dismissKey, toast } from '../toast'
-import type { ArenaTier, Champion, ChampionDetail, Live, LivePlayer } from '../types'
+import { buildState } from '../build'
+import type { ArenaTier, Champion, ChampionDetail, Headliner, Live, LivePlayer } from '../types'
 const pctf = (x: number) => `${Math.round(x * 100)}%`
 const tierLabel = (t: number) => ['', 'S', 'A', 'B', 'C', 'D'][t] ?? '?'
 
@@ -160,6 +161,35 @@ onMounted(() => {
 onUnmounted(() => clearInterval(timer))
 
 const isRift = computed(() => live.value?.mapId === 11)
+// ARAM: Mayhem Headliner: the band that changes one rule this game.
+const headlinerList = ref<Headliner[]>([])
+watch(
+  () => live.value?.mayhem,
+  (m) => {
+    if (m && !headlinerList.value.length) api.headliners().then((r) => (headlinerList.value = r.headliners ?? [])).catch(() => {})
+  },
+)
+async function pickHeadliner(id: string) {
+  try {
+    const r = await api.setHeadliner(id)
+    if (live.value) live.value.headliner = r.current ?? undefined
+  } catch {
+    /* ignore */
+  }
+}
+const HL_SOURCE: Record<string, string> = { manual: 'set by you', inferred: 'detected in game', screen: 'read on screen' }
+const PENTAKILL: Record<string, string> = { Q: 'HEAVY', W: 'POWER', E: 'THRASH', R: 'DOOM' }
+// Pentakill: name the pick for your champion's skill order.
+const headlinerTip = computed(() => {
+  const h = live.value?.headliner
+  if (!h) return ''
+  const order = buildState.build?.skillOrder?.[0]?.order
+  const first = order?.split('>')[0]?.trim()
+  if (h.id === 'pentakill' && first && PENTAKILL[first]) {
+    return `Take ${PENTAKILL[first]} (${first}): you max ${order!.split('>').join(' > ')}. At 18, DOOM empowers your ultimate.`
+  }
+  return h.tip
+})
 const isArena = computed(() => live.value?.mapId === 30)
 const tiers = ref<Record<string, ArenaTier>>({})
 let tiersLoaded = false
@@ -263,7 +293,7 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
   <template v-if="live?.inGame">
     <!-- Tactical: score, status, hints -->
     <Widget id="live-status" :w="3">
-      <h2>Live <span class="clock">{{ fmtTime(live.gameTime) }}</span><span class="muted" style="margin-left: 8px">{{ live.gameMode }}</span></h2>
+      <h2>Live <span class="clock">{{ fmtTime(live.gameTime) }}</span><span class="muted" style="margin-left: 8px">{{ live.mayhem ? 'ARAM: Mayhem' : live.classic ? 'League Classic' : live.gameMode }}</span></h2>
       <div v-if="isArena" class="score">
         <span class="ally" title="Your team's kills">{{ arenaMine?.kills ?? 0 }}</span><span class="vs">kills · top enemy</span><span class="enemy" title="Best enemy team's kills">{{ arenaOthers[0]?.kills ?? 0 }}</span>
       </div>
@@ -282,6 +312,21 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
       <div v-if="live.hint" class="hintline">Build: {{ live.hint }}</div>
       <div v-if="!isArena && enemyBack.length" class="down"><span class="muted">Enemy back:</span><span v-for="p in enemyBack" :key="p.name" class="pill"><img :src="p.champion.image" />{{ p.champion.name }} {{ Math.ceil(p.respawnTimer) }}s</span></div>
       <div v-if="downSpells.length" class="down"><span class="muted">Down:</span><span v-for="x in downSpells" :key="x.p.name + x.s.name" class="pill"><img :src="x.s.image" />{{ x.p.champion.name }} {{ x.s.name }} {{ fmtTime(x.left) }}</span></div>
+    </Widget>
+
+    <!-- ARAM: Mayhem Headliner -->
+    <Widget v-if="live.mayhem" id="live-headliner" :w="3">
+      <h2>Headliner <span v-if="live.headliner?.source" class="muted" style="margin-left: 8px; text-transform: none; letter-spacing: 0">{{ HL_SOURCE[live.headliner.source] ?? live.headliner.source }}</span></h2>
+      <template v-if="live.headliner">
+        <div class="hl-name">{{ live.headliner.name }}</div>
+        <div class="hl-rule">{{ live.headliner.rule }}</div>
+        <div class="hintline">{{ headlinerTip }}</div>
+      </template>
+      <div v-else class="muted hl-rule">Not detected yet. If you know this game's band, pick it so ezlol can adjust (extra picks, four-card offers).</div>
+      <select class="hl-pick" :value="live.headliner?.id ?? ''" aria-label="This game's Headliner" @change="pickHeadliner(($event.target as HTMLSelectElement).value)">
+        <option value="">{{ live.headliner ? 'Clear' : 'Choose band…' }}</option>
+        <option v-for="h in headlinerList" :key="h.id" :value="h.id">{{ h.name }}</option>
+      </select>
     </Widget>
 
     <!-- Arena: your team -->
@@ -502,7 +547,10 @@ const stat = (k: string) => Math.round(Number(live.value?.me?.championStats?.[k]
 .obj-row .ally { color: var(--hextech-2); } .obj-row .enemy { color: var(--red); }
 .set.soon { border-color: var(--amber); }
 .istats .hp { color: #7fe0a0; }
-.offer-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.offer-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.hl-name { font-family: var(--display); font-size: 18px; font-weight: 700; letter-spacing: .06em; color: var(--gold-bright); }
+.hl-rule { font-size: 13px; line-height: 1.4; margin: 4px 0 6px; }
+.hl-pick { margin-top: 6px; }
 @media (max-width: 900px) { .offer-cards { grid-template-columns: 1fr; } }
 .offer-card { display: grid; grid-template-columns: 44px 1fr; gap: 8px; padding: 8px; border: 1px solid var(--gold-deep); background: var(--surface-raised); }
 .offer-card.best { border-color: var(--hextech-2); box-shadow: inset 0 0 0 1px var(--accent-glow); }

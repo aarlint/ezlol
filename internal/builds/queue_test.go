@@ -10,3 +10,21 @@ func TestQueueTagAndStoreKey(t *testing.T) {
 		}
 	}
 }
+
+func TestQueueFamilies(t *testing.T) {
+	tags := map[int]string{
+		420: "sr", 480: "sr", 450: "aram", 2400: "aram", 2401: "aram", 2410: "aram", 2450: "aram", 3270: "aram", 3280: "aram",
+		1700: "arena", 1740: "arena", 1750: "arena", 4310: "classic", 4320: "classic", 3262: "classic",
+	}
+	for q, want := range tags {
+		if got := QueueTag(q); got != want {
+			t.Errorf("QueueTag(%d) = %s, want %s", q, got, want)
+		}
+	}
+	if IsMayhem(450) || !IsMayhem(2400) {
+		t.Error("IsMayhem: plain ARAM has no augments; 2400 is Mayhem")
+	}
+	if IsClassic(420) || !IsClassic(4300) {
+		t.Error("IsClassic: 4300-4321 are League Classic (Jade)")
+	}
+}

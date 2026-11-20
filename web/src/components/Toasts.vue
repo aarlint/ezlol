@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { dismiss, toasts } from '../toast'
+import type { Augment } from '../types'
 const pctf = (x: number) => `${Math.round(x * 100)}%`
 const tierLabel = (t: number) => ['', 'S', 'A', 'B', 'C', 'D'][t] ?? '?'
+const cardStat = (a: Augment) => {
+  if (a.skill) return `Pentakill · empowers ${a.skill}`
+  if (a.avgPlace) return `avg place ${a.avgPlace.toFixed(2)} · ${a.games} games`
+  if (a.games) return `${pctf(a.winRate)} win · ${a.games} games · ${pctf(a.pickRate)} pick`
+  if (a.scope === 'global' && a.winRate) return `${pctf(a.winRate)} win · all champions`
+  return a.new ? 'new this patch · no data yet' : 'no data'
+}
 </script>
 
 <template>
@@ -17,8 +25,8 @@ const tierLabel = (t: number) => ['', 'S', 'A', 'B', 'C', 'D'][t] ?? '?'
           <div v-for="(a, i) in t.cards" :key="a.id" class="card" :class="[a.rarity, { best: i === 0 }]" :title="a.desc">
             <div class="ic"><img v-if="a.icon" :src="a.icon" :alt="a.name" /></div>
             <div class="cb">
-              <div class="n"><span class="tp" :class="'t' + a.tier">{{ tierLabel(a.tier) }}</span>{{ a.name }}</div>
-              <div class="s">{{ a.avgPlace ? `avg place ${a.avgPlace.toFixed(2)} · ${a.games} games` : a.games ? `${pctf(a.winRate)} win · ${a.games} games · ${pctf(a.pickRate)} pick` : 'no data' }}</div>
+              <div class="n"><span class="tp" :class="'t' + a.tier">{{ tierLabel(a.tier) }}</span>{{ a.name }}<span v-if="a.new" class="new">NEW</span></div>
+              <div class="s">{{ cardStat(a) }}</div>
               <div class="d">{{ a.desc }}</div>
             </div>
           </div>
@@ -55,6 +63,7 @@ const tierLabel = (t: number) => ['', 'S', 'A', 'B', 'C', 'D'][t] ?? '?'
 .card .n { font-weight: 700; font-size: 14px; display: flex; gap: 6px; align-items: center; }
 .card .s { font-size: 12px; color: var(--hextech-2); font-family: var(--display); }
 .card .d { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.new { font-family: var(--display); font-size: 9px; letter-spacing: .08em; padding: 1px 4px; border: 1px solid var(--hextech-2); color: var(--hextech-2); }
 .tp { font-family: var(--display); font-size: 10px; width: 16px; height: 16px; display: grid; place-items: center; border: 1px solid var(--gold-deep); color: var(--muted); }
 .tp.t1 { color: #ff8a3d; border-color: #ff8a3d; } .tp.t2 { color: var(--gold); border-color: var(--gold); } .tp.t3 { color: var(--hextech-2); border-color: var(--hextech-dim); }
 .toast-enter-active, .toast-leave-active { transition: all .18s ease; }

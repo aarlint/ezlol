@@ -137,8 +137,8 @@ onMounted(async () => {
 onUnmounted(() => unsub?.())
 
 // Widget dashboard: one grid per screen mode; widgets register on mount.
-const ARAM_QUEUES = new Set([450, 2400, 100])
-const ARENA_QUEUES = new Set([1700, 1710, 1750])
+const ARAM_QUEUES = new Set([450, 100, 2400, 2401, 2403, 2405, 2410, 2450, 3240, 3270, 3280]) // ARAM + every ARAM: Mayhem variant
+const ARENA_QUEUES = new Set([1700, 1710, 1740, 1750])
 // In-game screens differ by mode, so each gets its own default layout and saved arrangement.
 const modeKey = computed<ModeKey>(() => {
   if (mode.value !== 'game') return mode.value

@@ -1,4 +1,4 @@
-import type { ArenaTier, Build, BuildsStatus, RunePage, ChampSelect, Champion, ChampionDetail, ChampionInfo, Eog, Live, LogEntry, Mastery, PlayRecord, Session, SettingsView, Status, UpdateInfo } from './types'
+import type { ArenaTier, Build, BuildsStatus, RunePage, ChampSelect, Champion, ChampionDetail, ChampionInfo, Eog, Headliner, Live, LogEntry, Mastery, PlayRecord, Session, SettingsView, Status, UpdateInfo } from './types'
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...init })
@@ -24,6 +24,8 @@ export const api = {
   compile: (queue: 'ranked' | 'aram') => req<unknown>(`/api/builds/compile?queue=${queue}`, { method: 'POST' }),
   compileStop: () => req<unknown>('/api/builds/compile/stop', { method: 'POST' }),
   live: () => req<Live>('/api/live'),
+  headliners: () => req<{ headliners: Headliner[]; current: Headliner | null }>('/api/headliners'),
+  setHeadliner: (id: string) => req<{ current: Headliner | null }>('/api/headliner', { method: 'POST', body: JSON.stringify({ id }) }),
   champSelect: () => req<ChampSelect>('/api/champselect'),
   swapBench: (id: number) => req<unknown>(`/api/champselect/swap/${id}`, { method: 'POST' }),
   reroll: () => req<unknown>('/api/champselect/reroll', { method: 'POST' }),

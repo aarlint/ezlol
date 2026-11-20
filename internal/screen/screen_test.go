@@ -37,3 +37,11 @@ func TestMatch(t *testing.T) {
 		t.Fatalf("chat lines matched as offer: %v", got)
 	}
 }
+
+// Maestro (ARAM: Mayhem Headliner) offers four cards in one row.
+func TestOfferLayoutFourCards(t *testing.T) {
+	hits := []Hit{{"1", 0.2, 0.45}, {"2", 0.4, 0.45}, {"3", 0.6, 0.46}, {"4", 0.8, 0.45}}
+	if got := OfferLayout(hits); len(got) != 4 {
+		t.Fatalf("four-card offer kept %d cards, want 4", len(got))
+	}
+}
