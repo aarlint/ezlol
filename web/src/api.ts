@@ -23,7 +23,7 @@ export const api = {
   buildsStatus: () => req<BuildsStatus>('/api/builds/status'),
   compile: (queue: 'ranked' | 'aram') => req<unknown>(`/api/builds/compile?queue=${queue}`, { method: 'POST' }),
   compileStop: () => req<unknown>('/api/builds/compile/stop', { method: 'POST' }),
-  live: () => req<Live>('/api/live'),
+  live: (path?: number[]) => req<Live>(`/api/live${path?.length ? `?path=${path.join(',')}` : ''}`),
   headliners: () => req<{ headliners: Headliner[]; current: Headliner | null }>('/api/headliners'),
   setHeadliner: (id: string) => req<{ current: Headliner | null }>('/api/headliner', { method: 'POST', body: JSON.stringify({ id }) }),
   champSelect: () => req<ChampSelect>('/api/champselect'),

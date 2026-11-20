@@ -104,13 +104,28 @@ jobs:
             if [[ -z "${!v}" ]]; then unset "$v"; fi
           done
           if [[ "${{ matrix.goos }}" == "darwin" && -n "${CSC_LINK:-}" ]]; then
-            extra="-c.mac.notarize=true"
             unset CSC_IDENTITY_AUTO_DISCOVERY
+            # Notarize only when Apple accepts the credentials. An expired or revoked
+            # app-specific password (HTTP 401) would otherwise fail the whole build;
+            # ship a signed build instead and say so on the run summary.
+            if [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]] &&
+               xcrun notarytool history --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" >/dev/null 2>notary.err; then
+              extra="-c.mac.notarize=true"
+            else
+              why=$(grep -m1 -i 'error' notary.err 2>/dev/null | cut -c1-160 || true)
+              echo "::warning title=macOS build not notarized::Apple rejected the notarization credentials (${why:-no APPLE_* secrets}). The app is signed but not notarized; renew APPLE_APP_SPECIFIC_PASSWORD at appleid.apple.com to notarize again."
+              echo "**macOS ${{ matrix.goarch }}: signed, not notarized** (Apple rejected the notarization credentials)." >> "$GITHUB_STEP_SUMMARY"
+              unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+              extra="-c.mac.notarize=false"
+            fi
+            rm -f notary.err
           elif [[ "${{ matrix.goos }}" != "darwin" ]]; then
             # The certificate is Apple's Developer ID; Windows must not try to sign with it.
             unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
           fi
           npx electron-builder ${{ matrix.eb }} --publish never $extra
+          # Both mac jobs write latest-mac.yml; keep them apart so the release can merge them.
+          if [[ "${{ matrix.goos }}" == "darwin" ]]; then mv dist/latest-mac.yml "dist/latest-mac-${{ matrix.goarch }}.yml"; fi
       - uses: actions/upload-artifact@v4
         with:
           name: ezlol-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -131,6 +146,17 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # electron-updater reads one latest-mac.yml: list the arm64 and x64 files in it
+      # (arm64 stays the default path), or Intel Macs never see an update.
+      - name: Merge latest-mac.yml
+        run: |
+          cd dist
+          a=latest-mac-arm64.yml; x=latest-mac-amd64.yml
+          awk 'FNR==NR { if ($0 ~ /^files:/) { f=1; next } if (f && $0 ~ /^[^ ]/) f=0; if (f) extra = extra $0 "\n"; next }
+               /^path:/ && !done { printf "%s", extra; done=1 } { print }' "$x" "$a" > latest-mac.yml
+          rm "$a" "$x"
+          cat latest-mac.yml
+          test "$(grep -c '  - url: ' latest-mac.yml)" -eq 4
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2

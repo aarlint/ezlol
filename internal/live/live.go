@@ -10,27 +10,35 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
 
-const base = "https://127.0.0.1:2999/liveclientdata"
+const defaultBase = "https://127.0.0.1:2999/liveclientdata"
 
 // Client fetches and briefly caches game data.
 type Client struct {
 	http  *http.Client
+	base  string
 	mu    sync.Mutex
 	cache *GameData
 	at    time.Time
 }
 
 // New creates a client. The game presents a self-signed loopback cert.
+// EZLOL_LIVE_URL points it elsewhere (tools/fakegame for development).
 func New() *Client {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // loopback self-signed cert
 		DialContext:     (&net.Dialer{Timeout: 500 * time.Millisecond}).DialContext,
 	}
-	return &Client{http: &http.Client{Transport: tr, Timeout: 2 * time.Second}}
+	base := defaultBase
+	if v := strings.TrimRight(os.Getenv("EZLOL_LIVE_URL"), "/"); v != "" {
+		base = v + "/liveclientdata"
+	}
+	return &Client{http: &http.Client{Transport: tr, Timeout: 2 * time.Second}, base: base}
 }
 
 // GameData is the trimmed allgamedata payload.
@@ -125,6 +133,7 @@ type Event struct {
 	AcingTeam  string   `json:"AcingTeam,omitempty"`
 	DragonType string   `json:"DragonType,omitempty"`
 	Stolen     string   `json:"Stolen,omitempty"`
+	Recipient  string   `json:"Recipient,omitempty"` // FirstBlood: the killer
 }
 
 // Get returns game data, cached for up to 700ms. Returns nil, nil when no game is running.
@@ -134,7 +143,7 @@ func (c *Client) Get(ctx context.Context) (*GameData, error) {
 	if c.cache != nil && time.Since(c.at) < 700*time.Millisecond {
 		return c.cache, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/allgamedata", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/allgamedata", nil)
 	if err != nil {
 		return nil, err
 	}

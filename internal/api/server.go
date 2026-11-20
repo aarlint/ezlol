@@ -42,6 +42,7 @@ type Server struct {
 	ocr       *screen.Reader
 	offer     offerState
 	headliner headlinerState
+	timeline  timelineState
 	arena     arenaCache
 	ui        fs.FS  // built frontend, may be nil in dev
 	devProxy  string // vite dev server url, may be empty

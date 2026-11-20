@@ -213,6 +213,7 @@ export interface LivePlayer {
   itemArmor: number
   itemMR: number
   itemHP: number
+  itemGold: number
 }
 export interface LiveEvent {
   EventID: number
@@ -251,6 +252,47 @@ export interface Live {
   mayhem?: boolean
   classic?: boolean
   headliner?: Headliner
+  nextBuy?: NextBuy
+  momentum?: Momentum
+}
+/** An item with what it costs to buy right now. */
+export interface ShopItem {
+  id: number
+  name: string
+  image: string
+  gold: number
+}
+/** The next item on the build you are viewing, with your gold against it. */
+export interface NextBuy {
+  target: ShopItem
+  cost: number
+  have: number
+  left: number
+  gold: number
+  complete: boolean
+  buy: ShopItem[] | null
+  buyCost: number
+  after: ShopItem[] | null
+  then: ShopItem[] | null
+  done: number
+  total: number
+}
+export interface MomentumPoint {
+  t: number
+  ally: number
+  enemy: number
+  ak: number
+  ek: number
+}
+export interface MomentumMark {
+  t: number
+  kind: string
+  ally: boolean
+  label: string
+}
+export interface Momentum {
+  points: MomentumPoint[] | null
+  marks: MomentumMark[] | null
 }
 export interface ArenaTeam {
   id: number

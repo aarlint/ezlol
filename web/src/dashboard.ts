@@ -32,9 +32,12 @@ const BUILD_IDLE: Record<string, Pos> = {
   'aug-prismatic': P(9, 0, 3, 9), 'aug-gold': P(9, 9, 3, 9), 'aug-silver': P(9, 18, 3, 9),
   prismatic: P(9, 27, 3, 10), synergies: P(9, 37, 3, 10),
 }
-const LIVE_RIGHT: Record<string, Pos> = { 'live-you': P(9, 0, 3, 8), 'live-shopping': P(9, 8, 3, 12), 'live-killfeed': P(9, 20, 3, 12) }
-// Build block under the two team boxes: items | runes, then spells | boots.
-const BUILD_UNDER_TEAMS: Record<string, Pos> = { items: P(3, 20, 3, 12), runes: P(6, 20, 3, 12), spells: P(3, 32, 3, 10), boots: P(6, 32, 3, 12) }
+const LIVE_RIGHT: Record<string, Pos> = { 'live-you': P(9, 0, 3, 8), 'live-nextbuy': P(9, 8, 3, 8), 'live-shopping': P(9, 16, 3, 12), 'live-killfeed': P(9, 28, 3, 12) }
+// Under the two team boxes: the gold lead graph, then the build: items | runes, spells | boots.
+const BUILD_UNDER_TEAMS: Record<string, Pos> = {
+  'live-momentum': P(3, 20, 6, 6),
+  items: P(3, 26, 3, 12), runes: P(6, 26, 3, 12), spells: P(3, 38, 3, 10), boots: P(6, 38, 3, 12),
+}
 export const DEFAULT_LAYOUTS: Record<ModeKey, Record<string, Pos>> = {
   idle: { queue: P(0, 0, 3, 18), compile: P(0, 18, 3, 6), postgame: P(3, 24, 6, 12), ...BUILD_IDLE },
   // Champ select itself is a fixed bar above the grid; the grid holds the build.
@@ -87,6 +90,7 @@ const LIVE_COMMON: WidgetSpec[] = [
   { id: 'live-you', title: 'You', w: 3, h: 8 },
   { id: 'live-shopping', title: 'Shopping', w: 3, h: 8 },
   { id: 'live-killfeed', title: 'Kill feed', w: 3, h: 8 },
+  { id: 'live-nextbuy', title: 'Next buy', w: 3, h: 8, when: 'build loaded for your champion' },
 ]
 export const CATALOG: Record<ModeKey, WidgetSpec[]> = {
   idle: [
@@ -106,6 +110,7 @@ export const CATALOG: Record<ModeKey, WidgetSpec[]> = {
     ...LIVE_COMMON,
     { id: 'live-enemies', title: 'Enemies', w: 6, h: 10 },
     { id: 'live-allies', title: 'Your team', w: 6, h: 10 },
+    { id: 'live-momentum', title: 'Gold lead', w: 6, h: 6 },
     { id: 'live-objectives', title: 'Objectives', w: 3, h: 9 },
     { id: 'live-matchup', title: 'Matchup', w: 3, h: 9, when: 'lane opponent known' },
     ...BUILD_WIDGETS,
@@ -113,13 +118,14 @@ export const CATALOG: Record<ModeKey, WidgetSpec[]> = {
   'game-aram': [
     ...LIVE_COMMON,
     { id: 'live-headliner', title: 'Headliner', w: 3, h: 6, when: 'ARAM Mayhem' },
+    { id: 'live-momentum', title: 'Gold lead', w: 6, h: 6 },
     { id: 'live-enemies', title: 'Enemies', w: 6, h: 10 },
     { id: 'live-allies', title: 'Your team', w: 6, h: 10 },
     ...BUILD_WIDGETS,
     ...AUG_WIDGETS.map((w) => ({ ...w, when: 'ARAM Mayhem' })),
   ],
   'game-arena': [
-    ...LIVE_COMMON,
+    ...LIVE_COMMON.filter((w) => w.id !== 'live-nextbuy'),
     { id: 'arena-mine', title: 'Your team (Arena)', w: 6, h: 7, when: 'after the first fights' },
     { id: 'arena-teams', title: 'Enemy teams (Arena)', w: 6, h: 24, when: 'after the first fights' },
     ...BUILD_WIDGETS,
